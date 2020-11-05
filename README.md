@@ -1,5 +1,6 @@
 # AWS_automation
 AWS EC2, S3 and some other (lambda, SNS, CloudWatch etc) automation scripts (deployment, cleaning, maintenance)
+
 ## purpose
 
 The main purpose of this repo is to - using only CLI, and as less as possible manual work - create automatically an environemnt for doing some tasks on the fly:
@@ -33,3 +34,26 @@ And also:
   - all volumes
   - all keypairs
   - leaving only own AMIs, and S3 buckets
+  
+## AWS extra addons
+
+- SSM agent manual installation:
+  - **[SSM rpm](https://s3.eu-west-1.amazonaws.com/amazon-ssm-eu-west-1/latest/linux_amd64/amazon-ssm-agent.rpm)**
+  - ```aws ssm start-session --region=eu-west-1 --target [instance_id]```
+- packages and configuration management: *cloudformation* or *terraform*
+- reconfiguration ssh port to 2222:
+  - (SELinux) ```semanage port -a -t ssh_port_t -p tcp 2222```
+
+### AWS related links
+
+- *[AWS info about policy versioning](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_version.html)*
+- *[automatic backup process EC2 -> S3](https://aws.amazon.com/blogs/startups/how-to-back-up-workloads-with-amazon-s3-ebs/)*
+- *[Running commands on your Linux instance at launch](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html)*
+- *[How to use jq in oneliners AWS CLI](https://medium.com/circuitpeople/aws-cli-with-jq-and-bash-9d54e2eabaf1)*
+- **[creating/attaching role to existing EC2 Instance](https://aws.amazon.com/blogs/security/new-attach-an-aws-iam-role-to-an-existing-amazon-ec2-instance-by-using-the-aws-cli/)**
+- **[AWS Lambda - Launch EC2 Instances](https://medium.com/appgambit/aws-lambda-launch-ec2-instances-40d32d93fb58)**
+- [goofys - one of a method of mounting s3 as filesystem to linux](https://github.com/kahing/goofys)
+- [sharing encrypted AMIs between accounts](https://aws.amazon.com/blogs/security/how-to-share-encrypted-amis-across-accounts-to-launch-encrypted-ec2-instances/)
+### other
+- *[slack emoji](https://www.webfx.com/tools/emoji-cheat-sheet)*
+- *[markdown guide](https://www.markdownguide.org/basic-syntax)*

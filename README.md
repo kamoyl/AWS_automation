@@ -1,5 +1,5 @@
 # AWS_automation
-AWS EC2, S3 and some other (lambda, SNS, CloudWatch etc) automation scripts (deployment, cleaning, maintenance)
+AWS EC2, S3 and some other (lambda, SNS, CloudWatch, CloudTrail etc) automation scripts (deployment, cleaning, maintenance). the idea is to: run a script and have alredy full defined, working environment with all needed services, and appropriately configured policies and secure groups... On the other hands is to have a tool, to fully clean AWS AccoundID env.
 
 ## purpose
 

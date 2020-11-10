@@ -1,13 +1,14 @@
 # AWS_automation
 AWS EC2, S3 and some other (lambda, SNS, CloudWatch, CloudTrail etc) automation scripts (deployment, cleaning, maintenance). the idea is to: run a script and have alredy full defined, working environment with all needed services, and appropriately configured policies and secure groups... On the other hands is to have a tool, to fully clean AWS AccoundID env.
 
-**BE AWARE:** due to not having permissions to VPCs, nor IGWs - those are not checked if exists, not checked if properly attached (IGW to VPC) etc... 
+**BE AWARE:** due to not having permissions to VPCs, nor IGWs - those are not checked if exists, not checked if properly attached (IGW to VPC), also networks are not created, but they are already checked if exist... 
 
-## prerequisites:
-- created already VPC(s)
-- created already IGW(s)
-- created subnet(s) and attached to VPS(s)
-- created default subnet for availability zone
+## prerequisites (vpc, igw, subnets, routing tables are collected):
+- already created VPC(s)
+- already created IGW(s)
+- already created subnet(s) and attached to VPS(s)
+- already created default subnet for availability zone
+- created routing table(s)
 - few initial VARIABLES:
 
 ## purpose

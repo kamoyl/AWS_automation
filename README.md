@@ -3,12 +3,10 @@ AWS EC2, S3 and some other (lambda, SNS, CloudWatch, CloudTrail etc) automation 
 
 **BE AWARE:** due to not having permissions to VPCs, nor IGWs - those are not checked if exists, not checked if properly attached (IGW to VPC), also networks are not created, but they are already checked if exist... 
 
-## prerequisites (vpc, igw, subnets, routing tables are collected):
+## prerequisites:
 - already created VPC(s)
 - already created IGW(s)
 - already created subnet(s) and attached to VPS(s)
-- already created default subnet for availability zone
-- created routing table(s)
 - few initial VARIABLES:
 
 ## purpose

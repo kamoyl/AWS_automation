@@ -1,5 +1,5 @@
 # AWS automation
-AWS EC2, S3 and some other (lambda, SNS, CloudWatch, CloudTrail etc) automation scripts (deployment, cleaning, maintenance). the idea is to: run a script and have alredy full defined, working environment with all needed services, and appropriately configured policies and secure groups... On the other hands is to have a tool, to fully clean AWS AccoundID env.
+AWS EC2, S3 and some other (lambda, SNS, CloudWatch, CloudTrail etc) automation scripts (deployment, cleaning, maintenance). the idea is to: run a script and have already fully defined, working environment with all needed services, and appropriately configured policies and secure groups... On the other hands to have a tool, to fully clean AWS AccoundID env.
 
 **BE AWARE:** due to not having permissions to VPCs, nor IGWs - those are not checked if exists, not checked if properly attached (IGW to VPC), also networks are not created, but they are already checked if exist... 
 

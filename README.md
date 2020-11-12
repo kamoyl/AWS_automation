@@ -10,14 +10,14 @@ Because it is a cloud environemnt and some things takes time (deployment of inst
   - ```AWS_DEFAULT_NAME``` - for prefixing security groups, policies, roles, instance profiles etc
   - ```AWS_COMMON_NAME``` - for prefixing something "bigger", and for more then one person/instance, like S3 buckets
   - ```AWS_REPO_ADDRESS="https://kamoyl.github.io/AWS_automation/"``` (it is already pointing [here](https://kamoyl.github.io/AWS_automation/), because this repo is cloned on newly created instance and from that repo, and that instance there is a possibility to manage the AWS env also (policy is already properly created)
-  - SLACK_CHANNEL_AWS="D1KGVBCUF"
-  - SLACK_WEB_HOOK (for sending notifications about status of volumes and instances etc)
-  - SLACK_TOKEN
+  - ```SLACK_CHANNEL_AWS="D1KGVBCUF"```
+  - ```SLACK_WEB_HOOK``` (for sending notifications about status of volumes and instances etc)
+  - ```SLACK_TOKEN```
 - parameters needed:
-  - DEPLOY_USER (-u) - user which have permissions to do what we need to be done on created instance (optional parameter, default: "jenkins")
-  - AWS_PROFILE (-p) - profile with which all commands (AWS CLI) will be run (mandatory parameter)
-  - AWS_AMI_ID  (-A) - AMI ID (when there is no local AMI(s)) (optional parameter, by default scripts are trying to figure it out from local AMI(s) which is the newest (created as the latest)
-  - AWS_INSTANCE_TYPE (-I) - optional parameter (default is free tier: "t3.small")
+  - ```DEPLOY_USER``` (-u) - user which have permissions to do what we need to be done on created instance (optional parameter, default: "jenkins")
+  - ```AWS_PROFILE``` (-p) - profile with which all commands (AWS CLI) will be run (mandatory parameter)
+  - ```AWS_AMI_ID```  (-A) - AMI ID (when there is no local AMI(s)) (optional parameter, by default scripts are trying to figure it out from local AMI(s) which is the newest (created as the latest)
+  - ```AWS_INSTANCE_TYPE``` (-I) - optional parameter (default is free tier: "t3.small")
   
 ## purpose
 

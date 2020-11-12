@@ -7,9 +7,9 @@ Because it is a cloud environemnt and some things takes time (deployment of inst
 - already created VPC, IGW and subnet (usually defined by default, tested on newly created free tier account) - there is an assumptions they exist
 - created IAM named profile - scripts won't run without providing profile name
 - few initial mandatory VARIABLES (they are mostly covered, but they are personal):
-  - AWS_DEFAULT_NAME - for prefixing security groups, policies, roles, instance profiles etc
-  - AWS_COMMON_NAME - for prefixing something "bigger", and for more then one person/instance, like S3 buckets
-  - AWS_REPO_ADDRESS="https://kamoyl.github.io/AWS_automation/" (it is already pointing [here](https://kamoyl.github.io/AWS_automation/), because this repo is cloned on newly created instance and from that repo, and that instance there is a possibility to manage the AWS env also (policy is already properly created)
+  - ```AWS_DEFAULT_NAME``` - for prefixing security groups, policies, roles, instance profiles etc
+  - ```AWS_COMMON_NAME``` - for prefixing something "bigger", and for more then one person/instance, like S3 buckets
+  - ```AWS_REPO_ADDRESS="https://kamoyl.github.io/AWS_automation/"``` (it is already pointing [here](https://kamoyl.github.io/AWS_automation/), because this repo is cloned on newly created instance and from that repo, and that instance there is a possibility to manage the AWS env also (policy is already properly created)
   - SLACK_CHANNEL_AWS="D1KGVBCUF"
   - SLACK_WEB_HOOK (for sending notifications about status of volumes and instances etc)
   - SLACK_TOKEN

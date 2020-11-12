@@ -6,7 +6,7 @@ Because it is a cloud environemnt and some things takes time (deployment of inst
 **BE AWARE:** due to not having permissions to VPCs, nor IGWs - those are not checked if exists, not checked if properly attached (IGW to VPC), also networks are not created, but they are already checked if exist... 
 
 ## prerequisites:
-- already created VPC, IGW and subnet (usually defined by default)
+- already created VPC, IGW and subnet (usually defined by default, tested on newly created free tier account)
 - created IAM named profile - scripts won't run without providing profile name
 - few initial VARIABLES:
 

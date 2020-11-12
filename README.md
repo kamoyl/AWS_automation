@@ -7,6 +7,7 @@ Because it is a cloud environemnt and some things takes time (deployment of inst
 
 ## prerequisites:
 - already created VPC, IGW and subnet (usually defined by default)
+- created IAM named profile
 - few initial VARIABLES:
 
 ## purpose

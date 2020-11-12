@@ -61,6 +61,7 @@ And also:
 - *[How to use jq in oneliners AWS CLI](https://medium.com/circuitpeople/aws-cli-with-jq-and-bash-9d54e2eabaf1)*
 - **[creating/attaching role to existing EC2 Instance](https://aws.amazon.com/blogs/security/new-attach-an-aws-iam-role-to-an-existing-amazon-ec2-instance-by-using-the-aws-cli/)**
 - **[AWS Lambda - Launch EC2 Instances](https://medium.com/appgambit/aws-lambda-launch-ec2-instances-40d32d93fb58)**
+- *[AWS Lambda - nice guide](https://stackify.com/aws-lambda-with-python-a-complete-getting-started-guide/)
 - [s3fs - mounting s3 bucket as a filesystem under linux](https://github.com/s3fs-fuse/s3fs-fuse)
 - [goofys - one of a method of mounting s3 as filesystem to linux](https://github.com/kahing/goofys)
 - [sharing encrypted AMIs between accounts](https://aws.amazon.com/blogs/security/how-to-share-encrypted-amis-across-accounts-to-launch-encrypted-ec2-instances/)

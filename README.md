@@ -6,9 +6,7 @@ Because it is a cloud environemnt and some things takes time (deployment of inst
 **BE AWARE:** due to not having permissions to VPCs, nor IGWs - those are not checked if exists, not checked if properly attached (IGW to VPC), also networks are not created, but they are already checked if exist... 
 
 ## prerequisites:
-- already created VPC(s)
-- already created IGW(s)
-- already created subnet(s) and attached to VPS(s)
+- already created VPC, IGW and subnet (usually defined by default)
 - few initial VARIABLES:
 
 ## purpose

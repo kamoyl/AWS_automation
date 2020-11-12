@@ -18,8 +18,7 @@ Because it is a cloud environemnt and some things takes time (deployment of inst
   - AWS_PROFILE (-p) - profile with which all commands (AWS CLI) will be run (mandatory parameter)
   - AWS_AMI_ID  (-A) - AMI ID (when there is no local AMI(s)) (optional parameter, by default scripts are trying to figure it out from local AMI(s) which is the newest (created as the latest)
   - AWS_INSTANCE_TYPE (-I) - optional parameter (default is free tier: "t3.small")
-  - <span style="color:blue">some *blue* text</span>
-
+  
 ## purpose
 
 The main purpose of this repo is to - using only CLI, and as less as possible manual work - create automatically an environemnt for doing some tasks on the fly:

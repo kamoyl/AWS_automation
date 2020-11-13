@@ -4,6 +4,7 @@ AWS EC2, S3 and some other (lambda, SNS, CloudWatch, CloudTrail etc) automation 
 Because it is a cloud environemnt and some things takes time (deployment of instance, instance being actually up, creating snapshot or image) - all commands are checking if resource is already available.
 
 ## prerequisites:
+- some more-or-less obvious tools: ip, ifconfig, bc, and [grepcidr](http://www.pc-tools.net/unix/grepcidr/)
 - already created VPC, IGW and subnet (usually defined by default, tested on newly created free tier account) - there is an assumptions they exist
 - created IAM named profile - scripts won't run without providing profile name
 - few initial mandatory VARIABLES (they are mostly covered, but they are personal):

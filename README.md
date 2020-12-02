@@ -24,7 +24,8 @@ Because it is a cloud environemnt and some things takes time (deployment of inst
 ## purpose
 
 The main purpose of this repo is to - using only CLI, and as less as possible manual work - create automatically an environemnt for doing some tasks on the fly:
-- create tight security group which only ads deployed IP and ssh protocol to access to EC2 instance(s)
+- create tight security group which only ads deployed IP and ssh protocol to access to EC2 instance(s) (only when instance is created)
+- create common policy group which adds a group of networks with ssh protocol to access to EC2 instance(s) created by lambda
 - create policy
 - create role
 - attach role to policy
@@ -39,12 +40,17 @@ The main purpose of this repo is to - using only CLI, and as less as possible ma
 - create a KeyPair - checking if there is already an ssh key of deployer to import it in case
   - use it in case there is something to do remotely
   - remote script functions are prepared to be deployed in background logging output, which is presented with the rest of output
+- very simmilar process is done when creating a lambda function which deployes EC2 instance based on delivered image ID (or pick up own newest) and runs appropriate code (of course with different policies, groups etc)
 - present details in nice output, with all monthly and annualy costs so far
+- CloudTrail (ToDo)
+- events (busses, rules etc) - for appropriately deploy and run EC2 with a code, and clean environment afterword
 - send appropriate notifications to slack channel - also nicely formatted
   - about costs
   - about own AMIs
   - about working/running instances
-  - about volumes 
+  - about volumes
+  - S3 buckets (and their features: lifecycle, encryption, secure access etc)
+- created instances (doesn't matter if by Lambda or directly) are deployed with 
 
 And also:
 - clean the whole environment - if needed:

@@ -1,0 +1,322 @@
+#!/usr/bin/env bash
+
+export TERM="xterm-256color"
+BLACK=$(tput setaf 0)
+RED=$(tput setaf 1)
+GREEN=$(tput setaf 2)
+YELLOW=$(tput setaf 3)
+LIME_YELLOW=$(tput setaf 190)
+POWDER_BLUE=$(tput setaf 153)
+BLUE=$(tput setaf 4)
+MAGENTA=$(tput setaf 5)
+CYAN=$(tput setaf 6)
+WHITE=$(tput setaf 7)
+BRIGHT=$(tput bold)
+NORMAL=$(tput sgr0)
+BLINK=$(tput blink)
+REVERSE=$(tput smso)
+UNDERLINE=$(tput smul)
+RESET=$(tput sgr0)
+WINE=$(echo -e "\x1b[38;2;191;000;000m")
+LIME=$(echo -e "\x1b[38;2;191;255;000m")
+BROWN=$(echo -e "\x1b[38;2;210;100;000m")
+DARK_GREEN=$(echo -e "\x1b[38;2;50;200;100m")
+LIGHT_BLUE=$(echo -e "\x1b[38;2;50;200;240m")
+LIGHT_YELLOW=$(echo -e "\x1b[38;2;250;250;0m")
+
+PATH_PARENT_SCRIPTS=$(dirname ${SCRIPTS_HOME})
+PATH_GRANDPARENT_SCRIPTS=$(dirname ${PATH_PARENT_SCRIPTS})
+SCRIPT_NAME=$(echo ${SCRIPT} | awk -F\/ '{print $NF}')
+
+git_branch () { git branch --no-color 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/\1/'; }
+export -f git_branch
+
+git_repository () { basename $(git remote -v | grep fetch | awk '{print $2}' | sed 's/\.git//g'); }
+export -f git_repository
+
+HOSTNAME="$(hostname -s)"
+HOSTNAME_FQDN=$(hostname -f)
+RESOLVED_HOST_IP=$(nslookup $(hostname -f) | grep -A2 $(hostname -f) | grep Address: | awk '{print $2}')
+
+DATE=$(date +"done: %m-%d-%Y at time: %H:%M")
+NOW=$(date +"%m-%d-%Y at time: %H:%M")
+NOW_SECONDS=$(date +%s)
+CURRENT_YEAR=$(date +%Y)
+CURRENT_MONTH=$(date +%m)
+CURRENT_DAY=$(date +%d)
+export CURRENT_TIMESTAMP=$(date "+%Y.%m.%d-%H.%M.%S")
+export CURRENT_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+export ERROR_CODE_SUM="ERROR_CODE_SUM_${CURRENT_TIMESTAMP}.log"
+HISTORY_DAYS="30"
+MONTH_SECONDS="2592000"
+WEEK_SECONDS="604800"
+DAY_SECONDS="86400"
+
+YESTERDAY=$(date -d "yesterday" '+%Y-%m-%d')
+export YESTERDAY
+YESTERDAY_WEEK_NR=$(date -d "${YESTERDAY}" +%V)
+export YESTERDAY_WEEK_NR
+TODAY=$(date -d "today" '+%Y-%m-%d')
+TODAY_WEEK_NR=$(date -d "${TODAY}" +%V)
+PREVIOUS_WEEK_DAY=$(date +%Y-%m-%d -d "7 days ago")
+PREVIOUS_WEEK_NR=$(date -d "${PREVIOUS_WEEK_DAY}" +%V)
+
+## Simple logging mechanism for Bash
+##
+## Author: Michael Wayne Goodman <goodman.m.w@gmail.com>
+## Thanks: Jul for the idea to add a datestring. See:
+## http://www.goodmami.org/2011/07/simple-logging-in-bash-scripts/#comment-5854
+## Thanks: @gffhcks for noting that inf() and debug() should be swapped,
+##         and that critical() used $2 instead of $1
+##
+## License: Public domain; do as you wish
+##
+exec 3>&2 # logging stream (file descriptor 3) defaults to STDERR
+verbosity=5 # default to show warnings
+silent_lvl=0
+crt_lvl=1
+err_lvl=2
+wrn_lvl=3
+inf_lvl=4
+dbg_lvl=5
+
+notify() { log ${silent_lvl} "${LIME}NOTE: $1${BLUE}"; } # Always prints
+critical() { log ${crt_lvl} "${BRIGHT}${RED}CRIT: $1${NORMAL}${BLUE}"; }
+error() { log ${err_lvl} "${RED}ERRO: $1${BLUE}"; }
+warn() { log ${wrn_lvl} "${WINE}WARN: $1${BLUE}"; }
+inf() { log ${inf_lvl} "${CYAN}INFO: $1${BLUE}"; } # "info" is already a command
+debug() { log ${dbg_lvl} "DEBG: $1"; }
+log() {
+      if [ ${verbosity} -ge $1 ]
+      then
+        datestring=$(date +'%H:%M:%S')
+        # Expand escaped characters, wrap at 300 chars, indent wrapped lines
+        #echo -e "${BLUE}${datestring} $(basename $0) [${ENV} ${REPORT_NUMBER}] ${SHLVL} ${2}${RESET}" | fold -w300 -s | sed '2~1s/^/  /' >&3
+        echo -e "${BLUE}${datestring} $(basename $0) [${LIGHT_BLUE}${HOSTNAME}${BLUE} ${ENV} $(git_branch)${BLUE}] ${SHLVL} ${2}${RESET}" | fold -w350 -s | sed '2~1s/^/  /' >&2
+      fi
+}
+
+export -f inf
+export -f debug
+export -f warn
+export -f critical
+export -f notify
+export -f error
+export -f log
+export verbosity
+
+function failed {
+  if [ -z ${ERROR_CODE} ]
+  then
+    local ERROR_CODE=$?
+  fi
+  set +o errtrace
+  set +o xtrace
+  error "EXIT code: ${YELLOW}${ERROR_CODE}${RED} in ${YELLOW}${BASH_SOURCE[1]}${RED} at about ${YELLOW}${BASH_LINENO[0]}${RED}"
+  log_tmp_maintenance 
+  exit ${ERROR_CODE}
+}
+
+SLEEP_DURATION=${SLEEP_DURATION:=1}  # default to 1 second, use to speed up tests
+
+log_tmp_maintenance()
+{
+  if [ $# -eq 1 ]
+  then
+    S3_BUCKET_NAME=${1}
+  fi
+  BACKUP_OUTPUT_FILE="${SCRIPT_NAME}_${CURRENT_TIMESTAMP}.tar.xz"
+  inf "Archiving all logs and tmp files into: ${BROWN}${VAR}/${BACKUP_OUTPUT_FILE}"
+  tar -cJf "${VAR}/${BACKUP_OUTPUT_FILE}" -C "${VAR}" ${TMP} ${LOG} > /dev/null 2>&1
+  ERROR_CODE="$?"
+  if [ ${ERROR_CODE} -eq 0 ]
+  then
+    rm -rf "${TMP}"
+    rm -rf "${LOG}"
+    inf "  All tmp and log files has just been archived in: ${YELLOW}${VAR}"
+    if [[ ${AWS_ZONE} == "Y" ]]
+    then
+      if [ -z ${S3_BUCKET_NAME} ]
+      then
+        S3_BUCKET_NAME="${AWS_COMMON_NAME}-reports"
+        warn "    ${BROWN}${BACKUP_OUTPUT_FILE}${WINE} - AWS S3 bucket is not provided, so default one is choosen: ${YELLOW}${S3_BUCKET_NAME}"
+        inf "    Copying ${BROWN}${BACKUP_OUTPUT_FILE}${CYAN} to AWS S3 bucket: ${YELLOW}${S3_BUCKET_NAME}"
+        aws s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > /dev/null 2>&1
+      else
+        inf "    Copying ${BROWN}${BACKUP_OUTPUT_FILE}${CYAN} to AWS S3 bucket: ${YELLOW}${S3_BUCKET_NAME}"
+        aws s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > /dev/null 2>&1
+      fi
+    fi
+  else
+    inf "  I couldn't archive tmp and log files"
+  fi
+}
+
+progress-bar() 
+{
+  local duration
+  local columns
+  local space_available
+  local fit_to_screen  
+  local space_reserved
+
+  space_reserved=35   # reserved width for the percentage value
+  duration=${1}
+  columns=$(tput cols)
+  space_available=$(( columns-space_reserved ))
+
+  if (( duration < space_available )); then
+    fit_to_screen=1;
+  else
+    fit_to_screen=$(( duration / space_available ));
+    fit_to_screen=$((fit_to_screen+1));
+  fi
+
+  alreadyDONE() { for ((done=0; done<(elapsed / fit_to_screen) ; done=done+1 )); do printf "▇"; done }
+  remaining() { for (( remain=(elapsed/fit_to_screen) ; remain<(duration/fit_to_screen) ; remain=remain+1 )); do printf " "; done }
+  percentage() { printf "| %s%%" $(( ((elapsed)*100)/(duration)*100/100 )); }
+  clean_line() { printf "\r"; }
+
+  for (( elapsed=1; elapsed<=duration; elapsed=elapsed+1 ))
+  do
+    alreadyDONE; remaining; percentage; sleep "${SLEEP_DURATION}"; clean_line
+  done
+  clean_line
+}
+
+function ProgressBar {
+  let PROGRESS=(${1}*100/${2}*100)/100
+  let DONE=(${PROGRESS}*8)/10
+  let LEFT=80-${DONE}
+  FILL=$(printf "%${DONE}s")
+  EMPTY=$(printf "%${LEFT}s")
+  printf "\r${BLUE}${datestring} $(basename $0) [${HOSTNAME} ${ENV} $(git_branch)${BLUE}] PROGRS: [${LIME}${FILL// /▊}${EMPTY// /-}${BLUE}] ${WINE}${PROGRESS}%%"
+}
+
+VIRTUALBOX_NETWORK="10.0.2.0/24"
+LOCAL_NETWORK="192.168.0.0/16"
+
+debug "Checking if needed tools exists: ip/ifconfig, grepcidr, jq, zip/7z, bc"
+
+if type ip > /dev/null 2>&1
+then
+  DEFAULT_INET_IP=$(ip route get $(ip route show 0.0.0.0/0 | grep -oP 'via \K\S+') | grep -oP 'src \K\S+')
+  #local_ip="$(ip route get 1 | awk -F'src' '{print $2; exit}')"
+  #local_ip="${local_ip/uid*}"
+  #[[ -z "$local_ip" ]] && local_ip="$(ifconfig -a | awk '/broadcast/ {print $2; exit}')"
+elif type ifconfig > /dev/null 2>&1
+then
+  DEFAULT_INET_IP=$(ifconfig | grep -w inet | awk '{print $2}' | tail -n1)
+else
+  error "There is no \"ip\", nor \"ifconfig\" exiting"
+  failed
+fi
+if ! type grepcidr > /dev/null 2>&1
+then
+  error "There is no \"grepcidr\" command, exiting"
+fi
+if ! type jq > /dev/null 2>&1
+then
+  error "There is no \"jq\" command, exiting"
+  failed
+fi
+if ! type zip > /dev/null 2>&1 && ! type 7z > /dev/null 2>&1
+then
+  error "There is no \"zip/7z\" command, exiting"
+  failed
+elif type zip > /dev/null 2>&1
+then
+  export ZIP_ON="yes"
+elif type 7z > /dev/null 2>&1
+then
+  export SZ_ON="yes"
+fi
+if ! type bc > /dev/null 2>&1
+then
+  error "There is no \"bc\" command, exiting"
+  failed
+fi
+
+if grepcidr "${VIRTUALBOX_NETWORK}" <(echo "${DEFAULT_INET_IP}") > /dev/null
+then
+  VIRTUALBOX_IP=${DEFAULT_INET_IP}
+elif grepcidr "${LOCAL_NETWORK}" <(echo "${DEFAULT_INET_IP}") > /dev/null
+then
+  LOCAL_IP=${DEFAULT_INET_IP}
+fi
+
+EXTERNAL_INET_IP=$(timeout --preserve-status -s 9 -k 3 2 curl ${SLACK_PROXY_CONTROL} -s https://ipinfo.io/ip 2>/dev/null)
+
+export LDAPTLS_REQCERT=never
+
+if [ ! -z ${VIRTUALBOX_IP} ]
+then
+  debug "You are currently connected from ${BROWN}VirtualBOX: ${LIME}${VIRTUALBOX_IP}"
+  export YOUR_IP="${VIRTUALBOX_IP}"
+  YOUR_NETWORK="VirtualBOX"
+  PROXYS=""
+elif [ ! -z ${LOCAL_IP} ]
+then
+  debug "You are currently connected from some local IP: ${LIME}${LOCAL_IP}"
+  if [ ! -z ${EXTERNAL_INET_IP} ]
+  then
+    debug "  And your external IP is: ${LIME}${EXTERNAL_INET_IP}"
+  fi
+  export YOUR_IP="${LOCAL_IP}"
+  YOUR_NETWORK="local IP"
+  PROXYS=""
+fi
+
+if [ -z ${PROXYS} ]
+then
+  SLACK_PROXY_CONTROL=""
+else
+  SLACK_PROXY_CONTROL="-x ${PROXYS}"
+fi
+
+if [ -s "${SCRIPTS_HOME}/config_secrets" ]
+then
+  source "${SCRIPTS_HOME}/config_secrets"
+fi
+if [ -s "${SCRIPTS_HOME}/config_extra" ]
+then
+  source "${SCRIPTS_HOME}/config_extra"
+fi
+if [ -s "${SCRIPTS_HOME}/config_aws" ]
+then
+  source "${SCRIPTS_HOME}/config_aws"
+fi
+
+function SHOW_TIME ()
+{
+  NUM=${1}
+  MIN=0
+  HOUR=0
+  DAY=0
+  if((NUM>59))
+  then
+    ((SEC=NUM%60))
+    ((NUM=NUM/60))
+    if((NUM>59))
+    then
+      ((MIN=NUM%60))
+      ((NUM=NUM/60))
+       if((NUM>23))
+        then
+         ((HOUR=NUM%24))
+         ((DAY=NUM/24))
+       else
+         ((HOUR=NUM))
+       fi
+    else
+      ((MIN=NUM))
+    fi
+  else
+    ((SEC=NUM))
+  fi
+  #echo "${DAY}"d "${HOUR}"h "${MIN}"m "${SEC}"s
+  echo "${HOUR}:${MIN}:${SEC}"
+}
+
+debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}')${YELLOW} ]"
+

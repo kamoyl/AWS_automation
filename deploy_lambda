@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+
+#AWS IAM LAMBDA: role
+if [ -s "${TMP}/${AWS_ROLES}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}Checking if appropriate role (${YELLOW}${AWS_EC2_LAMBDA_ROLE}${MAGENTA}) for LAMBDA service exists"
+  AWS_EC2_LAMBDA_ROLE_CHECK=$(jq -r --arg ec2_lambda_role ${AWS_EC2_LAMBDA_ROLE} '.Roles[] | select(.RoleName == $ec2_lambda_role) | .RoleName' "${TMP}/${AWS_ROLES}_full.json")
+  if [ ! -z ${AWS_EC2_LAMBDA_ROLE_CHECK} ]
+  then
+    inf "  Role ${YELLOW}${AWS_EC2_LAMBDA_ROLE}${CYAN} exists"
+    export EC2_LAMBDA_ROLE_ARN=$(jq -r --arg ec2_lambda_role ${AWS_EC2_LAMBDA_ROLE} '.Roles[] | select(.RoleName == $ec2_lambda_role) | .Arn' "${TMP}/${AWS_ROLES}_full.json")
+  else
+    warn "  Role ${YELLOW}${AWS_EC2_LAMBDA_ROLE}${WINE} doesn't exist"
+    aws_role_create ${AWS_EC2_LAMBDA_ROLE} lambda
+  fi
+fi
+#AWS IAM LAMBDA: roles
+
+#AWS IAM LAMBDA: policy
+if [ -s "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}Checking if appropriate policy (${DARK_GREEN}${AWS_EC2_LAMBDA_POLICY}${MAGENTA}) for LAMBDA service exists"
+  NAMED_POLICY_ARN=$(jq -r --arg prefixed_policy_name ${AWS_EC2_LAMBDA_POLICY} 'select(.PolicyName == $prefixed_policy_name) | .Arn' "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json")
+  if [ -z ${NAMED_POLICY_ARN} ]
+  then
+    warn "  Policy ${DARK_GREEN}${AWS_EC2_LAMBDA_POLICY}${WINE} doesn't exist"
+    aws_lambda_policy_create ${AWS_EC2_LAMBDA_POLICY}
+    NAMED_POLICY_ARN="$(jq -r '.Policy.Arn' "${TMP}/${AWS_POLICIES}_${AWS_EC2_LAMBDA_POLICY}_creation.json")"
+    aws_attaching_policy_to_role ${AWS_EC2_LAMBDA_ROLE} "${NAMED_POLICY_ARN}"
+  else
+    inf "  Policy ${DARK_GREEN}${AWS_EC2_LAMBDA_POLICY}${CYAN} exists"
+    NAMED_ROLE_NAME=$(aws iam list-entities-for-policy ${AWS_PROFILE_USE_CHECK} --policy-arn "${NAMED_POLICY_ARN}" | jq -r '.PolicyRoles[].RoleName' | grep ${AWS_EC2_LAMBDA_ROLE})
+    if [ -z ${NAMED_ROLE_NAME} ]
+    then
+      echo "Third part of if"
+      aws_attaching_policy_to_role ${AWS_EC2_LAMBDA_ROLE} "${NAMED_POLICY_ARN}"
+    else
+      inf "    Policy: ${DARK_GREEN}${AWS_EC2_LAMBDA_POLICY}${CYAN} is already attached to role: ${YELLOW}${AWS_EC2_LAMBDA_ROLE}"
+    fi
+  fi
+else
+  warn "  Policy ${DARK_GREEN}${AWS_EC2_LAMBDA_POLICY}${WINE} doesn't exist"
+  aws_lambda_policy_create ${AWS_EC2_LAMBDA_POLICY}
+  NAMED_POLICY_ARN="$(jq -r '.Policy.Arn' "${TMP}/${AWS_POLICIES}_${AWS_EC2_LAMBDA_POLICY}_creation.json")"
+  aws_attaching_policy_to_role ${AWS_EC2_LAMBDA_ROLE} "${NAMED_POLICY_ARN}"
+fi
+#AWS IAM LAMBDA: policy
+
+#AWS LAMBDA: security groups
+if [ -s "${TMP}/${AWS_SECURITY_GROUPS}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}Checking if security group ${YELLOW}${SECURITY_GROUP_LAMBDA_NAME}${MAGENTA} exists"
+  SECURITY_GROUP_ID=$(jq -r --arg security_group_name ${SECURITY_GROUP_LAMBDA_NAME} '.SecurityGroups[] | select(.GroupName == $security_group_name) | .GroupId' "${TMP}/${AWS_SECURITY_GROUPS}_full.json")
+  if [ ! -z ${SECURITY_GROUP_ID} ]
+  then
+    warn "  Security group: ${BROWN}${SECURITY_GROUP_LAMBDA_NAME}${WINE} already exists"
+    SECURITY_GROUP_EXISTS="yes"
+  else
+    aws_ec2_security_group_create "${SECURITY_GROUP_LAMBDA_NAME}"
+    aws ec2 ${AWS_PROFILE_USE_CHECK} describe-security-groups > "${TMP}/${AWS_SECURITY_GROUPS}_full.json"
+  fi
+fi
+inf "    ${MAGENTA}Checking if ${YELLOW}${SECURITY_GROUP_LAMBDA_NAME}${MAGENTA} has proper ingress configuration"
+for SOURCE_NETWORK in ${SOURCE_NETWORKS[*]}
+do
+  SECURITY_GROUP_INGRESS_SOURCE_NETWORK=$(jq -r --arg source_network ${SOURCE_NETWORK} '.SecurityGroups[].IpPermissions[].IpRanges[] | select(.CidrIp | startswith($source_network)) | .CidrIp' "${TMP}/${AWS_SECURITY_GROUPS}_full.json")
+  if [ -z ${SECURITY_GROUP_INGRESS_SOURCE_NETWORK} ]
+  then
+    aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${SOURCE_NETWORK}"
+  else
+    inf "      Source network: ${LIME}${SOURCE_NETWORK}${CYAN} has already been added to security group: ${YELLOW}${SECURITY_GROUP_LAMBDA_NAME}"
+  fi
+done
+if [ ! -z ${EXTERNAL_INET_IP} ]
+then
+  if [[ ${EXTERNAL_INET_IP} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+  then
+    #inf "      Adding external/public IP address: ${LIME}${EXTERNAL_INET_IP}${CYAN} to allow ssh to instance(s)"
+    aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${EXTERNAL_INET_IP}/32"
+  fi
+fi
+
+#AWS LAMBDA: security groups
+END_DEPLOY_TIME=$(date +%s.%4N)
+DEPLOY_TIME=$(echo "scale=4; x=(${END_DEPLOY_TIME} - ${START_DEPLOY_TIME}); if(x<1) print 0; x" | bc)
+
+START_DEPLOY_LAMBDA_TIME=$(date +%s.%4N)
+#AWS Lambda deployment
+AWS_HANDLER_FUNCTION_NAME="launchEC2_handler"
+
+export KEY_NAME
+export AWS_EC2_INSTANCES_PROFILE
+export AWS_HANDLER_FUNCTION_NAME
+export LATEST_AMI_ID
+export AWS_INSTANCE_TYPE
+export SUBNET_ID
+export REGION
+export SECURITY_GROUP_ID
+
+AWS_LAMBDA_HANDLER="${AWS_LAMBDA_NAME}.${AWS_HANDLER_FUNCTION_NAME}"
+if [ -s "${TMP}/${AWS_ROLES}_${AWS_EC2_LAMBDA_ROLE}_creation.json" ]
+then
+  export EC2_LAMBDA_ROLE_ARN=$(jq -r '.Role.Arn' "${TMP}/${AWS_ROLES}_${AWS_EC2_LAMBDA_ROLE}_creation.json")
+fi
+
+AWS_LAMBDA_SCRIPTS=(report_60-ec2_lambda.py)
+for LAMBDA_FUNCTION in ${AWS_LAMBDA_SCRIPTS[*]}
+do
+  AWS_LAMBDA_NAME="${AWS_COMMON_NAME}_$(echo ${LAMBDA_FUNCTION} | sed 's/\.py$//g')"
+  inf "preparing lambda function: ${YELLOW}${AWS_LAMBDA_NAME}"
+  cat "${SCRIPTS_HOME}/lambda_functions/${LAMBDA_FUNCTION}" | envsubst > "${TMP}/${AWS_LAMBDA_NAME}.py"
+  if [[ ${ZIP_ON} == yes ]]
+  then
+    zip -j -q "${TMP}/${AWS_LAMBDA_NAME}.zip" "${TMP}/${AWS_LAMBDA_NAME}.py"
+  elif [[ ${SP_ON} == yes ]]
+  then
+    7z a "${TMP}/${AWS_LAMBDA_NAME}.zip" "${SCRIPTS_HOME}/${AWS_LAMBDA_NAME}.py" > /dev/null 2>&1
+  fi
+  NUMBER=0
+  while [ ${NUMBER} -le 10 ]
+  do
+    sleep 1
+    ProgressBar ${NUMBER} 10
+    NUMBER=$(( ${NUMBER} + 1))
+  done
+  printf '\n'
+  #checking if lambda doesn't exist yet
+  EC2_LAMBDA_FUNCTION_ARN=$(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg ec2_lambda_function ${AWS_LAMBDA_NAME} '.Functions[] | select(.FunctionName | startswith($aws_default_name) | not) | select(.FunctionName == $ec2_lambda_function) | .FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
+  if [ ! -z ${EC2_LAMBDA_FUNCTION_ARN} ]
+then
+    warn "  Lambda function: ${BLUE}${AWS_LAMBDA_NAME}${WINE} already exists"
+  else
+    inf "deploying lambda function: ${YELLOW}${AWS_LAMBDA_NAME}"
+    aws ${AWS_PROFILE_USE_CHECK} lambda create-function --timeout 15 --function-name ${AWS_LAMBDA_NAME} --zip-file fileb://"${TMP}/${AWS_LAMBDA_NAME}.zip" --handler ${AWS_LAMBDA_HANDLER} --runtime python3.8 --role ${EC2_LAMBDA_ROLE_ARN} > "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" 2>&1
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -ne 0 ]
+    then
+      error "  Lambda function: ${YELLOW}${AWS_LAMBDA_NAME}${RED} cannot be deployed"
+      ENCODED_ERROR_MESSAGE=$(grep "\[ERROR\]" "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" | awk -F"failure message:" '{print $2}')
+      DECODED_ERROR_MESSAGE=$(aws ${AWS_PROFILE_USE_CHECK} sts decode-authorization-message --output text --encoded-message ${ENCODED_ERROR_MESSAGE} | jq -r)
+      error "${DECODED_ERROR_MESSAGE}"
+      failed
+    else
+      while [[ $(aws ${AWS_PROFILE_USE_CHECK} lambda get-function --function-name ${AWS_LAMBDA_NAME} | jq -r '.Configuration.State') == "Pending" ]]
+      do
+        for NUMBER in {1..100}
+        do
+          sleep 0.15
+          aws ${AWS_PROFILE_USE_CHECK} lambda get-function --function-name ${AWS_LAMBDA_NAME} | jq -r '.Configuration.State'
+          ProgressBar ${NUMBER} 100
+        done
+        printf '\n'
+      done
+      EC2_LAMBDA_FUNCTION_ARN=$(jq -r '.FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json")
+      #AWS events
+      # - it doesn;t support cron: aws --profile ${AWS_PROFILE} events create-event-bus --name ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}-bus
+      debug "EventBridge deployment"
+      debug "  putting rule: ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule with cron: (0 8 ? * MON-FRI *)"
+      aws --profile ${AWS_PROFILE} events put-rule --schedule-expression "cron(0 8 ? * MON-FRI *)" --name ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule #--event-bus-name ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}-bus
+      echo "error $?"
+      debug "    putting target: \"Id\"=\"1\",\"Arn\"=\"${EC2_LAMBDA_FUNCTION_ARN}\" to the rule: ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule"
+      aws --profile ${AWS_PROFILE} events put-targets --rule ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule --targets "Id"="1","Arn"="${EC2_LAMBDA_FUNCTION_ARN}"
+      echo "error $2"
+      #AWS events
+      #AWS Lambda deployment
+      #ToDo: prepare the whole package for python things
+      ##Only for current tests - will be removed soon when lambda script will work as expected
+      ##AWS Lambda invoking-
+      inf "invoking lambda function ${YELLOW}${AWS_LAMBDA_NAME}${RED}$(when event bridge will be configured properly this will be removed)"
+      #logs from CloudWatch
+      #aws ${AWS_PROFILE_USE_CHECK} logs get-log-events --log-group-name /aws/lambda/${AWS_LAMBDA_NAME} --log-stream-name $(cat out) --limit 5
+      aws ${AWS_PROFILE_USE_CHECK} lambda invoke --function-name ${AWS_LAMBDA_NAME} "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" --log-type Tail --query 'LogResult' --output text |  base64 -d > "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log" 2>&1
+      ERROR_CODE="$?"
+      INSTANCE_ID_LAMBDA=$(grep "^i-" "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log")
+      aws ${AWS_PROFILE_USE_CHECK} ec2 describe-instances --instance-ids ${INSTANCE_ID_LAMBDA} > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" 2>&1
+      AWS_INSTANCE_DETAILS_IP=$(jq -r '.Reservations[].Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+      if [ -z ${AWS_INSTANCE_DETAILS_IP} ] || [[ ${AWS_INSTANCE_DETAILS_IP} =~ null ]]
+      then
+        error "  Instance hasn't been run, exiting"
+        failed
+      fi
+      inf "  Instance: ${YELLOW}${INSTANCE_ID_LAMBDA}${CYAN} with IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN} has just been created"
+      inf "    ${MAGENTA}Checking if instance: ${YELLOW}${INSTANCE_ID_LAMBDA}${MAGENTA} is already up..."
+      while ! $(timeout --preserve-status -s 9 -k 6 4 ssh -o "StrictHostKeyChecking no" ${DEPLOY_USER}@${AWS_INSTANCE_DETAILS_IP} 'exit' >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1 ) >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1
+      do
+        for NUMBER in {1..100}
+        do
+          sleep 0.25
+          ProgressBar ${NUMBER} 100
+        done
+        printf '\n'
+      done
+      inf "      Instance ${YELLOW}${INSTANCE_ID_LAMBDA}${CYAN} is up"
+    fi
+  fi
+done
+#AWS Lambda invoking
+
+END_DEPLOY_LAMBDA_TIME=$(date +%s.%4N)
+DEPLOY_LAMBDA_TIME=$(echo "scale=4; x=(${END_DEPLOY_LAMBDA_TIME} - ${START_DEPLOY_LAMBDA_TIME}); if(x<1) print 0; x" | bc)

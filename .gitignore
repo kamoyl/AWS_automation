@@ -1,0 +1,6 @@
+*.log
+*.tmp
+var
+var_info
+var_deploy
+config_secrets

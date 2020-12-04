@@ -1,0 +1,337 @@
+#!/usr/bin/env bash
+
+if [[ "${OSTYPE}" =~ "linux" ]]
+then
+  SCRIPT=$(readlink -f "$0")
+elif [[ "${OSTYPE}" =~ "darwin" ]]
+then
+  SCRIPT=$(greadlink -f "$0")
+else
+  SCRIPT=$(readlink -f "$0")
+fi
+
+SCRIPTS_HOME=$(dirname "${SCRIPT}")
+
+PARAMETERS=$(echo "$@" | sed 's/\-l .//g')
+
+if [ $(caller | awk '{print $1}') -eq 0 ]
+then
+  CALLING=0
+  source "${SCRIPTS_HOME}/config"
+  echo -e "${BLUE}${datestring} EXECUTE: ${YELLOW}[ ${LIME}$0 ${PARAMETERS} ${YELLOW} ]${RESET}"
+else
+  CALLING=1
+  if [[ ${VERBOSE} == yes ]]
+  then
+    debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}') ${PARAMETERS} ${YELLOW} ]"
+  fi
+fi
+
+usage()
+{
+echo "
+${CYAN}Usage:${BRIGHT}${WHITE}
+$0 -L/-E -p PROFILE_NAME  [-u REMOTE_USERNAME] [-R] [-A AMI_ID] [-I INSTANCE_TYPE] [-o DIRECTORY] -v
+
+    ${NORMAL}${CYAN}This script deploys in AWS: 
+      ${LIME}▷ ${YELLOW}EC2 instance${CYAN} 
+        ${LIME}▷${CYAN} based on myAMI newest one (or provided):
+        ${LIME}▷${CYAN} policy to access all of needed services from AWS instance
+        ${LIME}▷${CYAN} role - with that policy
+        ${LIME}▷${CYAN} instance profile - with that role, to which created instance will be attached
+        ${LIME}▷${CYAN} security group - tighten to local/external IP to log in by ssh from
+        ${LIME}▷${CYAN} KeyPair to log in to created instance
+        ${LIME}▷${CYAN} S3 buckets for reports, security matrix etc with policy, access by ssl enabled, and lifecycle (ToDo)
+        ${LIME}▷${CYAN} run code remotely with remote logs sent to console
+      ${LIME}▷ ${YELLOW}Lambda function + EventBridge schedule${CYAN}${BLUE}
+        ${LIME}▷${CYAN} Lambda policy to access AWS logs for debug
+        ${LIME}▷${CYAN} EC2 policy to access all of needed services from AWS instance
+        ${LIME}▷${CYAN} roles - with that policies (for EC2 and Lambda)
+        ${LIME}▷${CYAN} instance profile - with that role, to which created instance will be attached
+        ${LIME}▷${CYAN} security group - tighten to all addresses defined by:  ${BROWN}SOURCE_NETWORKS${CYAN} variable
+        ${LIME}▷${CYAN} KeyPair to log in to created instance
+        ${LIME}▷${CYAN} S3 buckets for reports, security matrix etc with policy, access by ssl enabled, and lifecycle (ToDo)
+
+    ${LIME}-E${BLUE}  deployment of EC2 instance
+    ${LIME}-L${BLUE}  deployment of Lambda function with EventBridge schedule
+    
+    ${LIME}-p${BLUE}  ${RED}[mandatory outside WS env]${BLUE} - ${BROWN}PROFILE${BLUE} name of the profile stored in ~/.aws/config
+    ${LIME}-u${BLUE}  ${WINE}[optional]${BLUE} - ${BROWN}username${BLUE} on remote system which runs commands (if ommited, then ${YELLOW}\"${USER}\"${BLUE} is picked up)
+    ${LIME}-R${BLUE}  ${WINE}[optional]${BLUE} - run code remotely on just created EC2 instance
+    ${LIME}-A${BLUE}  ${WINE}[optional]${BLUE} - ${BROWN}AMI_ID${BLUE}         (if ommited, then ${YELLOW}the newest${BLUE} is picked up)
+    ${LIME}-I${BLUE}  ${WINE}[optional]${BLUE} - ${BROWN}INSTANCE_TYPE${BLUE}  (if ommited, then ${YELLOW}\"t3.xlarge\"${BLUE} is picked up)
+    ${LIME}-o${BLUE}  ${BROWN}OUTPUT${BLUE} directory - where to store ALL LOGs and TEMP files
+        (default directory is: ${CYAN}${HOME}/var${BLUE} and TMP and LOG are subdirectories to var)
+    ${LIME}-v${BLUE}  verbose
+    ${LIME}-h${BLUE}  help${RESET}"
+    1>&2;
+    exit 1
+}
+
+VERBOSE=no
+REDEPLOYMENT=no
+RUN_SCRIPT=no
+SECURITY_GROUP_EXISTS=no
+DEPLOY_EC2=no
+DEPLOY_LAMBDA=no
+while getopts ":o:A:u:p:I:vELhR" ARG
+do
+  case "${ARG}" in
+        v)
+            VERBOSE=yes
+            ;;
+        o)
+            o=${OPTARG}
+            ;;
+        u)  
+            u=${OPTARG}
+            DEPLOY_USER=${u}
+            ;;
+        p)
+            p=${OPTARG}
+            AWS_PROFILE=${p}
+            ;;
+        L)
+            L=${OPTARG}
+            DEPLOY_LAMBDA="yes"
+            ;;
+        E)
+            E=${OPTARG}
+            DEPLOY_EC2="yes"
+            ;;
+        A)
+            A=${OPTARG}
+            AWS_AMI_ID=${A}
+            ;;
+        I)
+            I=${OPTARG}
+            AWS_INSTANCE_TYPE=${I}
+            ;;
+        R)
+            RUN_SCRIPT=yes
+            ;;
+        h)
+            usage
+            ;;
+        *)
+            usage
+            ;;
+    esac
+done
+shift $((OPTIND-1))
+
+if [[ ${AWS_ZONE} == "Y" ]]
+then
+  if [[ ${DEPLOY_EC2} == "no" ]] && [[ ${DEPLOY_LAMBDA} == "no" ]]
+  then
+    error "Lack of mandatory parameter(s): ${LIME}deploy Lambda (-L) or EC2 (-E)?"
+    usage
+  fi
+elif [[ ${AWS_ZONE} == "N" ]]
+then
+  if [ -z ${AWS_PROFILE} ]
+  then
+    error "Lack of mandatory parameter(s): ${LIME}AWS profile (-p)"
+    usage
+  fi
+  if [[ ${DEPLOY_EC2} == "no" ]] && [[ ${DEPLOY_LAMBDA} == "no" ]]
+  then
+    error "Lack of mandatory parameter(s): ${LIME}deploy Lambda (-L) or EC2 (-E)?"
+    usage
+  fi
+fi
+
+if [[ ${HOSTNAME_FQDN} =~ eu-west-1.compute.internal ]]
+then
+  AWS_PROFILE_USE_CHECK=""
+else
+  AWS_PROFILE_USE_CHECK="--profile ${AWS_PROFILE}"
+fi
+
+if [ -z ${u} ]
+then
+  DEPLOY_USER="jenkins"
+  u=${DEPLOY_USER}
+else
+  DEPLOY_USER=${u}
+fi
+
+if [ -z ${I} ]
+then
+  AWS_INSTANCE_TYPE="t3.small"
+  #AWS_INSTANCE_TYPE="t2.micro"
+  #AWS_INSTANCE_TYPE="t3.xlarge"
+  I=${AWS_INSTANCE_TYPE}
+fi
+
+if [ ${CALLING} -eq 0 ]
+then
+  source "${SCRIPTS_HOME}/var_management"
+fi
+
+aws_connectivity_check
+
+START_DEPLOY_TIME=$(date +%s.%4N)
+source "${SCRIPTS_HOME}/aws_collecting"
+wait
+if [[ ${AWS_OWNER_ID} == "442556267452" ]]
+then
+  SLACK_CHANNEL_AWS="D1KGVBCUF"
+fi
+
+inf ""
+aws_key_create
+
+PERMISSIONS_BOUNDARY_ARN="$(jq -r '.Policies[] | select(.PolicyName | contains("-permissions-boundary")) | .Arn' "${TMP}/${AWS_POLICIES}_full.json")"
+
+#AWS network
+aws_default_subnet
+#AWS network
+
+#AWS AMI
+aws_newest_ami
+#AWS AMI
+
+#AWS S3 buckets
+if [ -s "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output" ]
+then
+  inf ""
+  S3_BUCKETS_AMOUNT=$(wc -l "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output" | awk '{print $1}')
+  inf "${MAGENTA}S3 buckets (${YELLOW}${S3_BUCKETS_AMOUNT} buckets${MAGENTA})"
+  for S3_BUCKET in ${AWS_S3_BUCKETS[*]}
+  do
+    if grep -qw ${S3_BUCKET} "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output"
+    then
+      inf "  S3 bucket: ${YELLOW}${S3_BUCKET}${CYAN} exists"
+      aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
+      aws_S3_bucket_encryption "${S3_BUCKET}"
+    else
+      warn "  S3 bucket: ${YELLOW}${S3_BUCKET}${WINE} doesn't exist"
+      aws_S3_bucket_create "${S3_BUCKET}"
+      aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
+      aws_S3_bucket_encryption "${S3_BUCKET}"
+      #ToDo: lifecycle of objects/buckets
+      #aws s3api put-bucket-lifecycle-configuration --bucket ${S3_BUCKET} --lifecycle-configuration file://<(echo "'
+      #  {
+      #    "Rules": 
+      #    [
+      #      {
+      #        "Filter": 
+      #        {
+      #          "Prefix": "documents/"
+      #        },
+      #        "Status": "Enabled",
+      #        "Expiration": 
+      #        {
+      #          "Days": 30
+      #        },
+      #        "ID": "MonthlyCleaning"
+      #      }
+      #    ]
+      #  }'")
+      #ToDo: Transfer Acceleration ?
+      #aws s3api put-bucket-accelerate-configuration --bucket bucketname --accelerate-configuration Status=Enabled
+    fi
+  done
+else
+  warn "  S3 bucket: ${YELLOW}${S3_BUCKET}${WINE} doesn't exist"
+  aws_S3_bucket_create "${S3_BUCKET}"
+  aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
+  aws_S3_bucket_encryption "${S3_BUCKET}"
+fi
+#ToDo: KMS add a key to encrypt S3 buckets...
+#ToDo: add removing S3 buckets function
+#AWS S3 buckets
+
+#AWS IAM EC2: role
+if [ -s "${TMP}/${AWS_ROLES}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}Checking if appropriate role (${YELLOW}${AWS_EC2_ROLE}${MAGENTA}) for EC2 service exists"
+  AWS_EC2_ROLE_CHECK=$(jq -r --arg ec2_role ${AWS_EC2_ROLE} '.Roles[] | select(.RoleName == $ec2_role) | .RoleName' "${TMP}/${AWS_ROLES}_full.json")
+  if [ ! -z ${AWS_EC2_ROLE_CHECK} ]
+  then
+    inf "  Role ${YELLOW}${AWS_EC2_ROLE}${CYAN} exists"
+    EC2_ROLE_ARN=$(jq -r --arg ec2_role ${AWS_EC2_ROLE} '.Roles[] | select(.RoleName == $ec2_role) | .Arn' "${TMP}/${AWS_ROLES}_full.json")
+  else
+    warn "  Role ${YELLOW}${AWS_EC2_ROLE}${WINE} doesn't exist"
+    aws_role_create ${AWS_EC2_ROLE} ec2
+  fi
+fi
+#AWS IAM EC2: role
+
+#AWS IAM EC2: policy
+if [ -s "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}Checking if appropriate policy (${DARK_GREEN}${AWS_EC2_INSTANCES_POLICY}${MAGENTA}) for EC2 instances exists"
+  NAMED_POLICY_ARN=$(jq -r --arg prefixed_policy_name ${AWS_EC2_INSTANCES_POLICY} 'select(.PolicyName == $prefixed_policy_name) | .Arn' "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json")
+  if [ -z ${NAMED_POLICY_ARN} ]
+  then
+    warn "  Policy ${DARK_GREEN}${AWS_EC2_INSTANCES_POLICY}${WINE} doesn't exist"
+    aws_ec2_policy_create ${AWS_EC2_INSTANCES_POLICY}
+    NAMED_POLICY_ARN="$(jq -r '.Policy.Arn' "${TMP}/${AWS_POLICIES}_${AWS_EC2_INSTANCES_POLICY}_creation.json")"
+    aws_attaching_policy_to_role ${AWS_EC2_ROLE} "${NAMED_POLICY_ARN}"
+  else
+    inf "  Policy ${DARK_GREEN}${AWS_EC2_INSTANCES_POLICY}${CYAN} exists"
+    NAMED_ROLE_NAME=$(aws iam list-entities-for-policy ${AWS_PROFILE_USE_CHECK} --policy-arn "${NAMED_POLICY_ARN}" | jq -r '.PolicyRoles[].RoleName' | grep ${AWS_EC2_ROLE})
+    if [ -z ${NAMED_ROLE_NAME} ]
+    then
+      aws_attaching_policy_to_role ${AWS_EC2_ROLE} "${NAMED_POLICY_ARN}"
+    else
+      inf "    Policy: ${DARK_GREEN}${AWS_EC2_INSTANCES_POLICY}${CYAN} is already attached to role: ${YELLOW}${AWS_EC2_ROLE}"
+    fi
+  fi
+else
+  warn "  Policy ${DARK_GREEN}${AWS_EC2_INSTANCES_POLICY}${WINE} doesn't exist"
+  aws_ec2_policy_create ${AWS_EC2_INSTANCES_POLICY}
+  NAMED_POLICY_ARN="$(jq -r '.Policy.Arn' "${TMP}/${AWS_POLICIES}_${AWS_EC2_INSTANCES_POLICY}_creation.json")"
+  aws_attaching_policy_to_role ${AWS_EC2_ROLE} "${NAMED_POLICY_ARN}"
+fi
+#AWS IAM EC2: policy
+
+#AWS EC2: instance profiles
+if [ -s "${TMP}/${AWS_INSTANCE_PROFILES}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}Checking if appropriate instance profile (${LIME}${AWS_EC2_INSTANCES_PROFILE}${MAGENTA}) exists"
+  AWS_EC2_INSTANCES_PROFILE_CHECK=$(jq -r --arg ec2_profile_name ${AWS_EC2_INSTANCES_PROFILE} '.InstanceProfiles[] | select(.InstanceProfileName == $ec2_profile_name) | .InstanceProfileName' "${TMP}/${AWS_INSTANCE_PROFILES}_full.json")
+  if [ ! -z ${AWS_EC2_INSTANCES_PROFILE_CHECK} ]
+  then
+    inf "  Instance profile ${LIME}${AWS_EC2_INSTANCES_PROFILE}${CYAN} exists"
+    export EC2_EC2_INSTANCE_PROFILE_ARN="$(jq -r --arg ec2_profile_name ${AWS_EC2_INSTANCES_PROFILE} '.InstanceProfiles[] | select(.InstanceProfileName == $ec2_profile_name) .Arn' "${TMP}/${AWS_INSTANCE_PROFILES}_full.json")"
+    inf "    Checking if role ${YELLOW}${AWS_EC2_ROLE}${CYAN} is added to the profile: ${LIME}${AWS_EC2_INSTANCES_PROFILE}"
+    if aws iam list-instance-profiles-for-role ${AWS_PROFILE_USE_CHECK} --role-name "${AWS_EC2_ROLE}" | grep "${AWS_EC2_ROLE}" > /dev/null 2>&1
+    then
+      inf "      Role ${YELLOW}${AWS_EC2_ROLE}${CYAN} is already added to the instance profile: ${LIME}${AWS_EC2_INSTANCES_PROFILE}"
+    else
+      aws_adding_role_to_instance_profile ${AWS_EC2_ROLE} ${AWS_EC2_INSTANCES_PROFILE}
+    fi
+  else
+    warn "  Instance profile ${LIME}${AWS_EC2_INSTANCES_PROFILE}${WINE} doesn't exist"
+    aws_creating_instance_profile "${AWS_EC2_INSTANCES_PROFILE}"
+    aws_adding_role_to_instance_profile "${AWS_EC2_ROLE}" "${AWS_EC2_INSTANCES_PROFILE}"
+  fi
+fi
+#AWS EC2: instance profiles
+
+#manually deploy EC2 instance
+if [[ ${DEPLOY_EC2} == "yes" ]]
+then
+  source "${SCRIPTS_HOME}/deploy_ec2"
+  inf ""
+  inf "Deployment of prerequisites took: ${WINE}${DEPLOY_TIME} ${CYAN}[s]"
+  inf "  Deployment of AWS instance ${YELLOW}${AWS_INSTANCE_DETAILS_ID}${CYAN} (IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN}) took ${WINE}${AWS_START_VM_TIME} ${CYAN}[s]"
+  inf "    Instance ${YELLOW}${AWS_INSTANCE_DETAILS_ID}${CYAN} is ready after ${WINE}${AWS_READY_VM_TIME} ${CYAN}[s]"
+elif [[ ${DEPLOY_LAMBDA} == "yes" ]]
+then
+  source "${SCRIPTS_HOME}/deploy_lambda"
+  inf ""
+  inf "Deployment of prerequisites took: ${WINE}${DEPLOY_TIME} ${CYAN}[s]"
+  inf "  Deployment of Lambda function ${YELLOW}${AWS_LAMBDA_NAME}${CYAN} took ${WINE}${DEPLOY_LAMBDA_TIME} ${CYAN}[s]"
+fi
+
+if [[ ${VERBOSE} == no ]]
+then
+  log_tmp_maintenance
+fi

@@ -1,0 +1,771 @@
+#!/usr/bin/env bash
+
+START_AWS_TIME=$(date +%s.%4N)
+
+if [[ "${OSTYPE}" =~ "linux" ]]
+then
+  SCRIPT=$(readlink -f "$0")
+elif [[ "${OSTYPE}" =~ "darwin" ]]
+then
+  SCRIPT=$(greadlink -f "$0")
+else
+  SCRIPT=$(readlink -f "$0")
+fi
+
+SCRIPTS_HOME=$(dirname "${SCRIPT}")
+
+PARAMETERS=$(echo "$@" | sed 's/\-l .//g')
+
+if [ $(caller | awk '{print $1}') -eq 0 ]
+then
+  CALLING=0
+  source "${SCRIPTS_HOME}/config"
+  echo -e "${BLUE}${datestring} EXECUTE: ${YELLOW}[ ${LIME}$0 ${PARAMETERS} ${YELLOW} ]${RESET}"
+else
+  CALLING=1
+  if [[ ${VERBOSE} == yes ]]
+  then
+    debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}') ${PARAMETERS} ${YELLOW} ]"
+  fi
+fi
+
+usage()
+{
+echo "
+${CYAN}Usage:${BRIGHT}${WHITE}
+$0 [-o DIRECTORY] -v [-O OWNER_ID] [-C]
+
+    ${NORMAL}${CYAN}This script checks and looks for difference between repositories and
+        ENV - and take some actions later on, producting report of what has been done${BLUE}
+    ${LIME}-o${BLUE}  OUTPUT directory - where to store ALL LOGs and TEMP files
+        (default directory is: ${CYAN}${HOME}/var${BLUE} and TMP and LOG are subdirectories to var)
+    ${LIME}-p${BLUE}  ${RED}[mandatory outside AWS env]${BLUE} - ${BROWN}PROFILE${BLUE} name stored in ~/.aws/config
+    ${LIME}-C${BLUE}  CLEANING (${WINE}WARNING${BLUE}) - removing all running/stopped instance(s) (terminates them) and all volumes
+    ${LIME}-x${BLUE}  only works with [-C] - CLEANING (${RED}WARNING${BLUE}) - removes: S3 buckets (only empty), lambda functions, events-busses etc.
+    ${LIME}-v${BLUE}  verbose${RESET}"
+    1>&2;
+    exit 1
+}
+
+VERBOSE=no
+REDEPLOYMENT=no
+CLEANING=no
+XTRA_CLEANING=no
+while getopts ":o:p:vCx" ARG
+do
+  case "${ARG}" in
+        v)
+            VERBOSE=yes
+            ;;
+        C)
+            CLEANING=yes
+            ;;
+        x)  XTRA_CLEANING=yes
+            ;;
+        p)
+            p=${OPTARG}
+            AWS_PROFILE=${p}
+            ;;
+        o)
+            o=${OPTARG}
+            ;;
+        *)
+            usage
+            ;;
+    esac
+done
+shift $((OPTIND-1))
+
+if [[ ${AWS_ZONE} == "Y" ]]
+then
+  if [ ! -z ${AWS_PROFILE} ]
+  then
+    AWS_PROFILE=""
+  fi
+elif [[ ${AWS_ZONE} == "N" ]]
+then
+  if [ -z ${AWS_PROFILE} ]
+  then
+    error "Lack of mandatory parameter(s): ${LIME}AWS profile (-p)"
+    usage
+  fi
+fi
+
+if [[ ${HOSTNAME_FQDN} =~ eu-west-1.compute.internal ]]
+then
+  AWS_PROFILE_USE_CHECK=""
+else
+  AWS_PROFILE_USE_CHECK="--profile ${AWS_PROFILE}"
+fi
+
+if [ ${CALLING} -eq 0 ]
+then
+  source "${SCRIPTS_HOME}/var_management"
+fi
+
+aws_connectivity_check
+
+source "${SCRIPTS_HOME}/aws_collecting"
+wait
+if [[ ${AWS_OWNER_ID} == "442556267452" ]]
+then
+  export SLACK_CHANNEL_AWS="D1KGVBCUF"
+fi
+
+if [[ ${CURRENT_DAY} == 01 ]] && [[ ${CURRENT_MONTH} == 01 ]]
+then
+  CURRENT_MONTH_COSTS="0"
+  CURRENT_YEAR_COSTS="0"
+elif [[ ${CURRENT_DAY} == 01 ]]
+then
+  CURRENT_MONTH_COSTS="0"
+  CURRENT_YEAR_COSTS=$(jq -r '.ResultsByTime[].Total[].Amount' "${TMP}/${AWS_COSTS_DETAILS}_full.json" | awk '{sum+=$1} END {print sum}')
+  CURRENT_YEAR_COSTS=${CURRENT_YEAR_COSTS%.*}
+else
+  CURRENT_MONTH_COSTS=$(jq -r '.ResultsByTime[].Groups[] | .Keys[] + "~" + .Metrics.NetAmortizedCost.Amount' "${TMP}/${AWS_COSTS_DETAILS}_current_month_full.json" | awk -F\~ '{sum+=$2} END {print sum}')
+  CURRENT_MONTH_COSTS=${CURRENT_MONTH_COSTS%.*}
+  CURRENT_YEAR_COSTS=$(jq -r '.ResultsByTime[].Total[].Amount' "${TMP}/${AWS_COSTS_DETAILS}_full.json" | awk '{sum+=$1} END {print sum}')
+  CURRENT_YEAR_COSTS=${CURRENT_YEAR_COSTS%.*}
+fi
+
+#AWS network
+#VPCs
+if [ -s "${TMP}/${AWS_VPCS}_full.json" ]
+then
+  if [[ ${VERBOSE} == yes ]]
+  then
+    inf ""
+    inf "${MAGENTA}AWS VPCs:"
+    VPC_ID=$(jq -r '.Vpcs[].VpcId' "${TMP}/${AWS_VPCS}_full.json")
+    inf "  VpcID: ${YELLOW}${VPC_ID}"
+    for VPC_CIDR_BLOCK in $(jq -r '.Vpcs[].CidrBlockAssociationSet[].CidrBlock' "${TMP}/${AWS_VPCS}_full.json")
+    do
+      inf "    CidrBlock: ${LIME}${VPC_CIDR_BLOCK}"
+    done
+  fi
+else
+  warn "  There is no VPC(s)"
+fi
+#IGW
+if [ -s "${TMP}/${AWS_IGWS}_full.json" ]
+then
+  if [[ ${VERBOSE} == yes ]]
+  then
+    inf ""
+    inf "${MAGENTA}AWS IGWs:"
+    IGW_ID=$(jq -r '.InternetGateways[].InternetGatewayId' "${TMP}/${AWS_IGWS}_full.json")
+    inf "  IgwID: ${YELLOW}${IGW_ID}"
+    VPC_ID_IGW=$(jq -r '.InternetGateways[].Attachments[].VpcId' "${TMP}/${AWS_IGWS}_full.json")
+    inf "    attached to VpcID: ${YELLOW}${VPC_ID_IGW}"
+  fi
+else
+  warn "  There is no IGW(s)"
+fi
+#routing tables
+if [ -s "${TMP}/${AWS_ROUTE_TBLS}_full.json" ]
+then
+  if [[ ${VERBOSE} == yes ]]
+  then
+    inf ""
+    inf "${MAGENTA}AWS routing tables:"
+    for ROUTING_TABLE in $(jq -r '.RouteTables[].RouteTableId' "${TMP}/${AWS_ROUTE_TBLS}_full.json")
+    do
+      inf "  Routing table ID: ${LIME}${ROUTING_TABLE}"
+    done
+  fi
+else
+  warn "  There is no routing table(s)"
+fi
+#subnets
+inf ""
+inf "${MAGENTA}AWS subnets:"
+if [ -s "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" ]
+then
+  if [[ ${VERBOSE} == yes ]]
+  then
+    for AWS_SUBNET_ID in $(jq -r '.Subnets[] | .SubnetId' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json")
+    do
+      (
+      SUBNET_NAME=$(jq -r --arg subnet_id ${AWS_SUBNET_ID} '.Subnets[] | select(.SubnetId == $subnet_id) | .Tags[].Value' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" 2>/dev/null)
+      SUBNET_CIDR=$(jq -r --arg subnet_id ${AWS_SUBNET_ID} '.Subnets[] | select(.SubnetId == $subnet_id) | .CidrBlock' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json")
+      SUBNET_AVAILABLE_ADDRESS=$(jq -r --arg subnet_id ${AWS_SUBNET_ID} '.Subnets[] | select(.SubnetId == $subnet_id) | .AvailableIpAddressCount' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json")
+      SUBNET_ID=$(jq -r --arg subnet_id ${AWS_SUBNET_ID} '.Subnets[] | select(.SubnetId == $subnet_id) | .SubnetId' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json")
+      SUBNET_ARN="$(jq -r --arg subnet_id ${AWS_SUBNET_ID} '.Subnets[] | select(.SubnetId == $subnet_id) | .SubnetArn' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json")"
+      SUBNET_AVAILABILITY_ZONE=$(jq -r --arg subnet_id ${AWS_SUBNET_ID} '.Subnets[] | select(.SubnetId == $subnet_id) | .AvailabilityZone' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json")
+      inf "  Subnet ${DARK_GREEN}${SUBNET_ID} ${CYAN}(tag: ${YELLOW}${SUBNET_NAME}${CYAN}, availability zone: ${YELLOW}${SUBNET_AVAILABILITY_ZONE}${CYAN}), ${LIME}${SUBNET_CIDR}${CYAN}, free IPs: ${BROWN}${SUBNET_AVAILABLE_ADDRESS}"
+      ) &
+    done
+  fi
+else
+  warn "  There is no subnets (really???)"
+fi
+#AWS network
+wait
+#AWS Instances
+
+inf ""
+inf "${MAGENTA}EC2 Instances:"
+if [ -s "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Reservations[].Instances[].InstanceId' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" | head -n1) ]
+then
+  for AWS_INSTANCE_ID in $(jq -r '.Reservations[].Instances[].InstanceId' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+  do
+    AWS_INSTANCE_IP=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+    AWS_INSTANCE_LAUNCH=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .LaunchTime' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+    AWS_INSTANCE_LAUNCH_DATE=$(echo ${AWS_INSTANCE_LAUNCH} | awk -FT '{print $1}')
+    AWS_INSTANCE_LAUNCH_TIME=$(echo ${AWS_INSTANCE_LAUNCH} | awk -FT '{print $2}' | awk -F\+ '{print $1}')
+    AWS_INSTANCE_LSECONDS=$(date -d"${AWS_INSTANCE_LAUNCH_DATE}T${AWS_INSTANCE_LAUNCH_TIME}" +%s)
+    AWS_INSTANCE_SECONDS=$(echo "${NOW_SECONDS} - ${AWS_INSTANCE_LSECONDS}" | bc)
+    AWS_INSTANCE_DAYS=$(echo "${AWS_INSTANCE_SECONDS} / 3600 / 24" | bc)
+    AWS_INSTANCE_TYPE=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .InstanceType' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+    AWS_INSTANCE_STATE=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .State.Name' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+    AWS_VOLUMES=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .BlockDeviceMappings[].Ebs.VolumeId' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+    if [ ${AWS_INSTANCE_DAYS} -eq 1 ]
+    then
+      WHEN_RUN="yesterday"
+    elif [ ${AWS_INSTANCE_DAYS} -lt 1 ]
+    then
+      WHEN_RUN="today"
+    else
+      WHEN_RUN="${AWS_INSTANCE_DAYS} days ago"
+    fi
+    if [[ ${AWS_ZONE} == "Y" ]] && [[ ${AWS_INSTANCE_ID} == ${LOCAL_EC2_INSTANCE} ]]
+    then
+      CHECKED_INSTANCE_PROFILE="$(jq -r --arg local_ec2_instance ${LOCAL_EC2_INSTANCE} '.Reservations[].Instances[] | select(.InstanceId == $local_ec2_instance) | .IamInstanceProfile.Arn' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" | awk -F\/ '{print $NF}')"
+      CHECKED_INSTANCE_PROFILE_ROLE=$(jq -r --arg local_ec2_instance_profile ${CHECKED_INSTANCE_PROFILE} '.InstanceProfiles[] | select(.InstanceProfileName == $local_ec2_instance_profile) | .Roles[].RoleName' "${TMP}/${AWS_INSTANCE_PROFILES}_full.json" | head -n1)
+      inf "  EC2 instance ID: ${YELLOW}${AWS_INSTANCE_ID}${CYAN}, type ${LIME}${AWS_INSTANCE_TYPE} ${CYAN}(${DARK_GREEN}CURRENT INSTANCE${CYAN})"
+      if [[ ${VERBOSE} == yes ]]
+      then
+        debug "   current instance profile: ${YELLOW}${CHECKED_INSTANCE_PROFILE}"
+        debug "   with role: ${YELLOW}${CHECKED_INSTANCE_PROFILE_ROLE}"
+      fi
+    else
+      inf "  EC2 instance ID: ${YELLOW}${AWS_INSTANCE_ID}${CYAN}, type ${LIME}${AWS_INSTANCE_TYPE}"
+    fi
+    inf "    recent start: ${WINE}${AWS_INSTANCE_LAUNCH_DATE} at ${AWS_INSTANCE_LAUNCH_TIME}${CYAN} (${YELLOW}${WHEN_RUN}${CYAN})"
+    if [[ ${AWS_INSTANCE_STATE} == "stopped" ]]
+    then
+      inf "    state: ${RED}${AWS_INSTANCE_STATE^^}"
+      inf "        IP: ${LIME}${AWS_INSTANCE_IP}"
+    elif [[ ${AWS_INSTANCE_STATE} == "running" ]]
+    then
+      inf "      state: ${GREEN}${AWS_INSTANCE_STATE^^}"
+      inf "        IP: ${LIME}${AWS_INSTANCE_IP}"
+    else
+      inf "      state: ${WINE}${AWS_INSTANCE_STATE^^}"
+    fi
+    for AWS_INSTANCE_VOL in $(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .BlockDeviceMappings[].Ebs.VolumeId' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+    do
+      AWS_INSTANCE_VOL_E2_SNAP=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Volumes[] | select(.Attachments[].InstanceId == $aws_instance_id) | .SnapshotId' "${TMP}/${AWS_VOLS_DETAILS}_full.json")
+      inf "          device mapping: ${YELLOW}${AWS_INSTANCE_VOL}"
+      inf "            E2 snapshot: ${BROWN}${AWS_INSTANCE_VOL_E2_SNAP}"
+      IFS=$'\n'
+      if [ -s "${TMP}/${AWS_SNAPS_DETAILS}_full.json" ]
+      then
+        for AWS_S3_SNAPSHOT_VOL_ID in $(jq -r --arg aws_instance_vol ${AWS_INSTANCE_VOL} '.Snapshots[] | select(.VolumeId == $aws_instance_vol) | .SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+        do
+          AWS_S3_SNAPSHOT_DESCRIPTION=$(jq -r --arg aws_s3_snapshot_id ${AWS_S3_SNAPSHOT_VOL_ID} '.Snapshots[] | select(.SnapshotId == $aws_s3_snapshot_id) | .Description' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          AWS_S3_SNAPSHOT_CREATED=$(jq -r --arg aws_s3_snapshot_id ${AWS_S3_SNAPSHOT_VOL_ID} '.Snapshots[] | select(.SnapshotId == $aws_s3_snapshot_id) | .StartTime' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          AWS_S3_SNAPSHOT_CREATED_DATE=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $1}')
+          AWS_S3_SNAPSHOT_CREATED_TIME=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $2}' | awk -F\. '{print $1}')
+          AWS_S3_SNAPSHOT_CDATE="${AWS_S3_SNAPSHOT_CREATED_DATE}"
+          AWS_S3_SNAPSHOT_CTIME="${AWS_S3_SNAPSHOT_CREATED_TIME}"
+          AWS_S3_SNAPSHOT_CSECONDS=$(date -d"${AWS_S3_SNAPSHOT_CDATE}T${AWS_S3_SNAPSHOT_CTIME}" +%s)
+          inf "              S3 snapshot: ${BROWN}${AWS_S3_SNAPSHOT_VOL_ID}, ${CYAN} created: ${WINE}${AWS_S3_SNAPSHOT_CDATE}${CYAN} at ${WINE}${AWS_S3_SNAPSHOT_CTIME} ${DARK_GREEN}(${AWS_S3_SNAPSHOT_DESCRIPTION:0:35}...)"
+          AWS_S3_SNAPSHOT_SECONDS=$(echo "${NOW_SECONDS} - ${AWS_S3_SNAPSHOT_CSECONDS}" | bc)
+          AWS_S3_SNAPSHOT_DAYS=$(echo "${AWS_S3_SNAPSHOT_SECONDS} / 3600 / 24" | bc)
+          if [ ${AWS_S3_SNAPSHOT_SECONDS} -ge ${MONTH_SECONDS} ]
+          then
+            warn "       and is older then a ${RED}MONTH${WINE} (${RED}${AWS_S3_SNAPSHOT_DAYS} days${WINE}), then deleting it"
+          elif [ ${AWS_S3_SNAPSHOT_SECONDS} -ge ${WEEK_SECONDS} ]
+          then
+            inf "        and it is older then a ${WINE}WEEK${CYAN} (${WINE}${AWS_S3_SNAPSHOT_DAYS} days${CYAN})"
+          elif [ ${AWS_S3_SNAPSHOT_SECONDS} -ge ${DAY_SECONDS} ]
+          then
+            inf "        and it is ${YELLOW}${AWS_S3_SNAPSHOT_DAYS}${CYAN} days old"
+          fi
+        done
+      fi
+      S3_SNAPSHOTS_AMOUNT=$(jq -r --arg aws_instance_vol ${AWS_INSTANCE_VOL} '.Snapshots[] | select(.VolumeId == $aws_instance_vol) | .SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json" | wc -l)
+    done
+    echo "
+              {
+                  \\\"value\\\": \\\"${AWS_INSTANCE_ID} (${AWS_INSTANCE_STATE}, ${AWS_INSTANCE_TYPE})\\\",
+                  \\\"short\\\": true
+              },
+              {
+                  \\\"value\\\": \\\"${AWS_INSTANCE_IPS}\\\",
+                  \\\"short\\\": true
+              },
+              " >> "${TMP}/${AWS_INSTANCES_DETAILS}_slack.out"
+    if [[ ${CLEANING} == yes ]]
+    then
+      if  [[ ${AWS_INSTANCE_STATE^^} == "TERMINATED" ]]
+      then
+        inf  "    ${YELLOW}${AWS_INSTANCE_ID}${CYAN} is already terminated..."
+      elif [[ ${AWS_INSTANCE_ID} != ${LOCAL_EC2_INSTANCE} ]]
+      then
+        aws_instance_removal ${AWS_INSTANCE_ID}
+      else
+        warn "    ${YELLOW}${AWS_INSTANCE_ID}${WINE} is actual instance, omitting"
+      fi
+    fi
+  done
+else
+  if [[ ${VERBOSE} == yes ]]
+  then
+    warn "  There is no EC2 instance(s)"
+  fi
+fi
+
+#AWS VOLUMEs
+inf ""
+inf "${MAGENTA}EC2 volumes"
+if [ -s "${TMP}/${AWS_VOLS_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Volumes[].VolumeId' "${TMP}/${AWS_VOLS_DETAILS}_full.json" | head -n1) ]
+then
+  for AWS_VOL_ID in $(jq -r '.Volumes[].VolumeId' "${TMP}/${AWS_VOLS_DETAILS}_full.json")
+  do
+    VOL_STATE=$(jq -r --arg aws_vol_id ${AWS_VOL_ID} '.Volumes[] | select(.VolumeId == $aws_vol_id) | .State' "${TMP}/${AWS_VOLS_DETAILS}_full.json")
+    VOL_INSTANCE_ID=$(jq -r --arg aws_vol_id ${AWS_VOL_ID} '.Volumes[] | select(.VolumeId == $aws_vol_id) | .Attachments[].InstanceId' "${TMP}/${AWS_VOLS_DETAILS}_full.json")
+    VOL_CREATE_TIME=$(jq -r --arg aws_vol_id ${AWS_VOL_ID} '.Volumes[] | select(.VolumeId == $aws_vol_id) | .CreateTime' "${TMP}/${AWS_VOLS_DETAILS}_full.json")
+    VOL_CREATE_CTIME=$(echo ${VOL_CREATE_TIME} | awk -FT '{print $1}')
+    VOL_CREATE_CDATE=$(echo ${VOL_CREATE_TIME} | awk -FT '{print $2}' | awk -F\. '{print $1}')
+    VOL_CREATE_LSECONDS=$(date -d"${VOL_CREATE_CDATE}T${VOL_CREATE_CTIME}" +%s)
+    VOL_CREATE_SECONDS=$(echo "${NOW_SECONDS} - ${VOL_CREATE_LSECONDS}" | bc)
+    VOL_CREATE_DAYS=$(echo "${VOL_CREATE_SECONDS} / 3600 / 24" | bc)
+    VOL_EC2_SNAPSHOT_ID=$(jq -r --arg aws_vol_id ${AWS_VOL_ID} '.Volumes[] | select(.VolumeId == $aws_vol_id) | .SnapshotId' "${TMP}/${AWS_VOLS_DETAILS}_full.json")
+    if [ ${VOL_CREATE_DAYS} -eq 1 ]
+    then
+      WHEN_RUN="yesterday"
+    elif [ ${VOL_CREATE_DAYS} -lt 1 ]
+    then
+      WHEN_RUN="today"
+    else
+      WHEN_RUN="${VOL_CREATE_DAYS} days ago"
+    fi
+    if [[ ${VOL_STATE} == available ]]
+    then
+      warn "  Volume: ${YELLOW}${AWS_VOL_ID}${RED} is not attached to any instance"
+      inf "    created: ${WINE}${VOL_CREATE_CDATE} at ${VOL_CREATE_CTIME} ${CYAN}(${YELLOW}${WHEN_RUN}${CYAN})"
+      if [[ ${CLEANING} == yes ]]
+      then
+        aws_vol_removal ${AWS_VOL_ID}
+      fi
+    elif [[ ${VOL_STATE} == in-use ]]
+    then
+      inf "  Volume: ${YELLOW}${AWS_VOL_ID}${GREEN} is attached ${CYAN}to instance: ${YELLOW}${VOL_INSTANCE_ID}"
+      inf "    created: ${YELLOW}${WHEN_RUN}"
+      inf "      EC2 snapshot: ${BROWN}${VOL_EC2_SNAPSHOT_ID}"
+    fi
+    if [[ ${CLEANING} == yes ]]
+    then
+      if [ -s "${LOG}/${AWS_INSTANCES_DETAILS}_${VOL_INSTANCE_ID}_termination.log.json" ]
+      then
+        #ToDo: check if that instance was NOT with DeleteOnTermination 
+        warn  "    Volume: ${YELLOW}${AWS_VOL_ID}${WINE} as attached to just terminated instance: ${YELLOW}${VOL_INSTANCE_ID}${WINE} - will be removed"
+        aws_vol_removal ${AWS_VOL_ID}
+      fi
+    fi
+    #ONLY S3 snapshots
+    if [ -s "${TMP}/${AWS_SNAPS_DETAILS}_full.json" ]
+    then
+      AWS_S3_SNAPSHOTS=$(jq -r --arg volume_id ${AWS_VOL_ID} '.Snapshots[] | select(.VolumeId == $volume_id) |.SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json" | head -n1)
+      if [ -z ${AWS_S3_SNAPSHOTS} ]
+      then
+        warn "        S3 snapshot(s) doesn't exist"
+      else
+        for AWS_SNAPSHOT_ID in $(jq -r --arg volume_id ${AWS_VOL_ID} '.Snapshots[] | select(.VolumeId == $volume_id) | .SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+        do
+          AWS_S3_SNAPSHOT_DESCRIPTION=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Description' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          AWS_S3_SNAPSHOT_PROGRESS=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Progress' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          AWS_S3_SNAPSHOT_CREATED=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .StartTime' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          AWS_S3_SNAPSHOT_CREATED_DATE=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $1}')
+          AWS_S3_SNAPSHOT_CREATED_TIME=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $2}' | awk -F\. '{print $1}')
+          AWS_S3_SNAPSHOT_VOLUME_ID=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .VolumeId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          inf "        S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN} (${DARK_GREEN}${AWS_S3_SNAPSHOT_DESCRIPTION}${CYAN})"
+        done
+      fi
+    fi
+    #ONLY S3 snapshots
+    echo "
+              {
+                  \\\"value\\\": \\\"${AWS_VOL_ID} (${VOL_STATE})\\\",
+                  \\\"short\\\": true
+              },
+              {
+                  \\\"value\\\": \\\"${WHEN_RUN}\\\",
+                  \\\"short\\\": true
+              },
+              " >> "${TMP}/${AWS_VOLS_DETAILS}_slack.out"
+  done
+else
+  if [[ ${VERBOSE} == yes ]]
+  then
+    warn "  There is no EC2 volume(s)"
+  fi
+fi
+#AWS Volumes
+
+#AWS S3 snapshots
+inf ""
+inf "${MAGENTA}S3 snapshot(s)"
+if [ -s "${TMP}/${AWS_SNAPS_DETAILS}_full.json" ]
+then
+  AWS_S3_SNAPSHOTS=$(jq -r '.Snapshots[] | .SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json" | head -n1)
+  if [ -z ${AWS_S3_SNAPSHOTS} ]
+  then
+    warn "  S3 snapshot(s) doesn't exist"
+  else
+    for AWS_SNAPSHOT_ID in $(jq -r '.Snapshots[] | .SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+    do
+      VOLUME_ID=$(jq -r --arg snap_id "${AWS_SNAPSHOT_ID}" '.Snapshots[] | select(.SnapshotId | contains($snap_id)) | .VolumeId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+      if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ]
+      then
+        AMI_ID_SNAPSHOT=$(jq -r --arg snap_id "${AWS_SNAPSHOT_ID}" '.Images[] | select(.BlockDeviceMappings[].Ebs.SnapshotId == $snap_id) | .ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+      fi
+          AWS_S3_SNAPSHOT_DESCRIPTION=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Description' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          AWS_S3_SNAPSHOT_PROGRESS=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Progress' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          AWS_S3_SNAPSHOT_CREATED=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .StartTime' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          AWS_S3_SNAPSHOT_CREATED_DATE=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $1}')
+          AWS_S3_SNAPSHOT_CREATED_TIME=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $2}' | awk -F\. '{print $1}')
+          AWS_S3_SNAPSHOT_VOLUME_ID=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .VolumeId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+      if [ -z ${AMI_ID_SNAPSHOT} ]
+      then
+        inf "  S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} from a volume: ${YELLOW}${VOLUME_ID}${CYAN} (created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN})"
+        if [[ ${CLEANING} == yes ]]
+        then
+          aws_snapshot_removal ${AWS_SNAPSHOT_ID}
+        fi
+      else
+        inf "  S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} from a volume: ${YELLOW}${VOLUME_ID}${CYAN} which is an AMI: ${YELLOW}${AMI_ID_SNAPSHOT}${CYAN} (created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN})"
+      fi
+    done
+  fi
+else
+  warn "  There is no S3 snapshot(s)"
+fi
+#AWS S3 snapshots
+
+#AWS AMIs
+inf ""
+inf "${MAGENTA}EC2 AMIs"
+if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ]
+then
+  for AWS_AMI_IMAGE_ID in $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+  do
+    AWS_AMI_NAME=$(jq -r --arg image_id ${AWS_AMI_IMAGE_ID} '.Images[] | select(.ImageId == $image_id) | .Name' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+    AWS_AMI_SNAPSHOT=$(jq -r --arg image_id ${AWS_AMI_IMAGE_ID} '.Images[] | select(.ImageId == $image_id) | .BlockDeviceMappings[].Ebs.SnapshotId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+    AWS_AMI_DESCRIPTION=$(jq -r --arg image_id ${AWS_AMI_IMAGE_ID} '.Images[] | select(.ImageId == $image_id) | .Description' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+    AWS_AMI_CREATION=$(jq -r --arg image_id ${AWS_AMI_IMAGE_ID} '.Images[] | select(.ImageId == $image_id) | .CreationDate' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+    AWS_AMI_CDATE=$(echo ${AWS_AMI_CREATION} | awk -FT '{print $1}')
+    AWS_AMIS_CTIME=$(echo ${AWS_AMI_CREATION} | awk -FT '{print $2}' | awk -F\. '{print $1}')
+    AWS_AMI_CSECONDS=$(date -d"${AWS_AMI_CDATE}T${AWS_AMIS_CTIME}" +%s)
+    AWS_AMI_SECONDS=$(echo "${NOW_SECONDS} - ${AWS_AMI_CSECONDS}" | bc)
+    AWS_AMI_DAYS=$(echo "${AWS_AMI_SECONDS} / 3600 / 24" | bc)
+    inf "  AMI id: ${YELLOW}${AWS_AMI_IMAGE_ID}"
+    inf "    AMI name: ${BROWN}${AWS_AMI_NAME}${CYAN}, created: ${WINE}${AWS_AMI_CDATE} at ${AWS_AMIS_CTIME} ${CYAN}(${DARK_GREEN}${AWS_AMI_DESCRIPTION}${CYAN})"
+    if [ ${AWS_AMI_SECONDS} -ge ${MONTH_SECONDS} ]
+    then
+      warn "     and is older then a ${RED}MONTH${WINE} (${RED}${AWS_AMI_DAYS}${WINE})"
+    elif [ ${AWS_AMI_SECONDS} -ge ${WEEK_SECONDS} ]
+    then
+      inf "      and it is older then a ${WINE}WEEK${CYAN} (${WINE}${AWS_AMI_DAYS} days${CYAN})"
+    elif [ ${AWS_AMI_SECONDS} -ge ${DAY_SECONDS} ]
+    then
+      inf "      and it is ${YELLOW}${AWS_AMI_DAYS}${CYAN} days old"
+    fi
+    inf "        AMI snapshot: ${BROWN}${AWS_AMI_SNAPSHOT}"
+    echo "
+              {
+                  \\\"value\\\": \\\"${AWS_AMI_IMAGE_ID}\\\",
+                  \\\"short\\\": true
+              },
+              {
+                  \\\"value\\\": \\\"${AWS_AMI_SNAPSHOT}\\\",
+                  \\\"short\\\": true
+              },
+            " >> "${TMP}/${AWS_AMIS_DETAILS}_slack.out"
+  done
+else
+  warn "  There is no EC2 AMIs"
+fi
+#AWS VOLUMEs
+
+#AWS S3 buckets
+if [ -s "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output" ]
+then
+  inf ""
+  S3_BUCKETS_AMOUNT=$(wc -l "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output" | awk '{print $1}')
+  inf "${MAGENTA}S3 buckets (${YELLOW}${S3_BUCKETS_AMOUNT} buckets${MAGENTA})"
+  for S3_BUCKET in $(awk '{print $NF}' "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output")
+  do
+    inf "  S3 bucket: ${YELLOW}${S3_BUCKET}${CYAN} exists"
+    if [[ ${AWS_ZONE} == "Y" ]]
+    then
+      inf "    Mounting locally S3 buckets"
+      for BUCKET in ${AWS_S3_BUCKETS[*]}
+      do 
+        sudo mkdir -p /media/${BUCKET}
+        sudo s3fs ${BUCKET} /media/${BUCKET} -o iam_role=${CHECKED_INSTANCE_PROFILE_ROLE},allow_other,use_cache=/tmp/cache,default_acl=public-read,uid=30006,gid=30006
+      done
+    fi
+  done
+fi
+#AWS S3 buckets
+
+#AWS EventBridge
+inf ""
+inf "${MAGENTA}Event Buses"
+#ToDo: remove event-buses
+  #aws delete-event-bus --profile ${AWS_PROFILE} events create-event-bus --name ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}-bus
+#ToDo: remove event rules
+  #aws --profile ${AWS_PROFILE} events delete-rule --name ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule
+#ToDo: remove targets
+  #aws --profile ${AWS_PROFILE} events remove-targets --rule ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule --ids 
+#ToDo: maybe put all of it into aws_collecting ?
+if [ -s "${TMP}/${AWS_EVENTS_BUSES}_full.json" ] 
+then
+  for EVENT_BUS in $(jq -r '.EventBuses[].Name' "${TMP}/${AWS_EVENTS_BUSES}_full.json")
+  do
+    EVENT_BUS_NAME=${EVENT_BUS}
+    EVENT_BUS_ARN="$(jq -r --arg event_bus_name ${EVENT_BUS_NAME} '.EventBuses[] | select(.Name == $event_bus_name) | .Arn' "${TMP}/${AWS_EVENTS_BUSES}_full.json")"
+    inf "  event bus: ${DARK_GREEN}${EVENT_BUS_NAME}"
+    if [ -s "${TMP}/${AWS_EVENTS_RULES}_full.json" ] && [ ! -z $(jq -r --arg aws_common_name ${AWS_COMMON_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | startswith($aws_common_name)) | select(.EventBusName == $event_bus_name) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json" | head -n1) ]
+    then
+      for EVENT_RULE in $(jq -r --arg aws_common_name ${AWS_COMMON_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | startswith($aws_common_name)) | select(.EventBusName == $event_bus_name) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+      do
+        aws --profile ${AWS_PROFILE} events list-targets-by-rule --event-bus-name default --rule ${EVENT_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" 2>&1
+        EVENT_RULE_NAME=${EVENT_RULE}
+        EVENT_RULE_ARN=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        EVENT_RULE_STATE=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .State' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        EVENT_RULE_DESCRIPTION=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .Description' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        inf "    event rule: ${LIME}${EVENT_RULE_NAME}${CYAN}, of this bus: ${DARK_GREEN}${EVENT_BUS_NAME}"
+        if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" ] && [ ! -z $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" | head -n1) ]
+        then
+          for EVENT_TARGET in $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json")
+          do
+            inf "      to target: ${GREEN}${EVENT_TARGET}"
+          done
+        else
+          warn "      There is no EventTargets related to rule: ${LIME}${EVENT_RULE_NAME}"
+        fi
+      done
+    else
+      warn "    There is no ${AWS_COMMON_NAME} EventRules related to the bus: ${DARK_GREEN}${EVENT_BUS_NAME}"
+    fi
+  done
+else
+  warn "  There is no ${AWS_COMMON_NAME} Event Buses yet"  
+fi
+#AWS events
+
+#AWS KeyPairs
+if [ -s "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}EC2 KeyPairs:"
+  AWS_EC2_KEYFINGERPRINT_CHECK=$(jq -r '.KeyPairs[].KeyFingerprint' "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" | head -n1)
+  if [ ! -z ${AWS_EC2_KEYFINGERPRINT_CHECK} ]
+  then
+    for AWS_EC2_KEYFINGERPRINT in $(jq -r '.KeyPairs[].KeyFingerprint' "${TMP}/${AWS_EC2_KEYPAIRS}_full.json")
+    do
+      for KEY_NAME in $(jq -r --arg fingerprint ${AWS_EC2_KEYFINGERPRINT} '.KeyPairs[] | select(.KeyFingerprint == $fingerprint) | .KeyName' "${TMP}/${AWS_EC2_KEYPAIRS}_full.json")
+      do
+        KEY_PAIR_ID=$(jq -r --arg keyname ${KEY_NAME} '.KeyPairs[] | select(.KeyName == $keyname) | .KeyPairId' "${TMP}/${AWS_EC2_KEYPAIRS}_full.json")
+        inf "  KeyName: ${POWDER_BLUE}${KEY_NAME}${CYAN}, with KeyPairId: ${LIME}${KEY_PAIR_ID}"
+        if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
+        then
+          aws_key_removal ${KEY_PAIR_ID}
+        fi
+      done
+    done
+  else
+    warn "  There is no KeyPairs" 
+  fi
+fi
+#AWS KeyPairs
+
+#AWS Roles and policies and instance profiles
+if [ -s "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}IAM policy:"
+  AWS_IAM_POLICY_NAME_CHECK=$(jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name) | not)' "${TMP}/${AWS_POLICIES}_full.json" | head -n1)
+  if [ ! -z ${AWS_IAM_POLICY_NAME_CHECK} ]
+  then
+    for AWS_IAM_POLICY_NAME in $(jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name) | not) | .PolicyName' "${TMP}/${AWS_POLICIES}_full.json")
+    do
+      AWS_IAM_POLICY_ARN="$(jq -r --arg aws_iam_policy_name ${AWS_IAM_POLICY_NAME} '.Policies[] | select(.PolicyName == $aws_iam_policy_name) | .Arn' "${TMP}/${AWS_POLICIES}_full.json")"
+      AWS_IAM_POLICY_ID=$(jq -r --arg aws_iam_policy_name ${AWS_IAM_POLICY_NAME} '.Policies[] | select(.PolicyName == $aws_iam_policy_name) | .PolicyId' "${TMP}/${AWS_POLICIES}_full.json")
+      inf "  Policy: ${YELLOW}${AWS_IAM_POLICY_NAME}${CYAN}, with ARN: ${LIME}${AWS_IAM_POLICY_ARN}${CYAN} exists"
+      AWS_IAM_POLICY_NAME=$(aws_list-entities-for-policy "${AWS_IAM_POLICY_ARN}" && jq -r '.PolicyRoles[].RoleName' ${TMP}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}_full.json)
+      if [ -z ${AWS_IAM_POLICY_NAME} ]
+      then
+        inf "    and it is not attached to any role"
+        if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
+        then
+          echo "AWS_IAM_POLICY_ARN=${AWS_IAM_POLICY_ARN}"
+          aws_policy_removal "${AWS_IAM_POLICY_ARN}"
+        fi
+      else
+        inf "    and it is attached to the role: ${YELLOW}${AWS_IAM_POLICY_NAME}"
+        if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
+        then
+          aws_detaching_policy_from_role ${AWS_IAM_POLICY_NAME} "${AWS_IAM_POLICY_ARN}"
+          aws_policy_removal "${AWS_IAM_POLICY_ARN}"
+          inf "      ${MAGENTA}Checking if role: ${YELLOW}${AWS_IAM_POLICY_NAME}${MAGENTA} is added to any instance profile..."
+          INSTANCE_PROFILE_ROLE_NAME=$(aws_list-instance-profiles-for-role "${AWS_IAM_POLICY_NAME}" && jq -r '.InstanceProfiles[].InstanceProfileName' "${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_POLICY_NAME}_full.json")
+          if [ -z ${INSTANCE_PROFILE_ROLE_NAME} ]
+          then
+            aws_role_removal "${AWS_IAM_POLICY_NAME}"
+          else
+            aws_removing_role_from_instance_profile "${AWS_IAM_POLICY_NAME}" "${INSTANCE_PROFILE_ROLE_NAME}"
+            aws_role_removal "${AWS_IAM_POLICY_NAME}"
+            aws_instance-profile_removal "${INSTANCE_PROFILE_ROLE_NAME}"
+          fi
+        fi
+      fi
+    done
+  else
+    warn "  There is no IAM policy"
+  fi
+fi
+
+aws_list-roles
+
+aws_list-profiles
+#AWS Roles and policies and instance profiles
+
+#AWS security groups
+aws_list-securitygroups
+#AWS security groups
+
+#AWS Lambda functions
+if [ -s "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}Lambda functions:"
+  AWS_LAMBDA_FUNCTION_NAMES=$(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Functions[] | select(.FunctionName | startswith($aws_default_name) | not) | .FunctionName' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json" | head -n1)
+  if [ -z ${AWS_LAMBDA_FUNCTION_NAMES} ]
+  then
+    warn "  There is no Lambda function(s) created"
+  else
+    for AWS_LAMBDA_FUNCTION_NAME in $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Functions[] | select(.FunctionName | startswith($aws_default_name) | not) | .FunctionName' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
+    do
+      inf "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+      if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
+      then
+        inf "    removing lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+        if [[ ${AWS_ZONE} == "Y" ]]
+        then
+          aws lambda delete-function --function-name ${AWS_LAMBDA_FUNCTION_NAME}
+        elif [[ ${AWS_ZONE} == "N" ]]
+        then
+          aws --profile ${AWS_PROFILE} lambda delete-function --function-name ${AWS_LAMBDA_FUNCTION_NAME}
+        fi
+      fi
+    done
+  fi
+fi
+#AWS Lambda functions
+
+#AWS logs
+if [ -s "${TMP}/${AWS_LOGS}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}Log groups"
+  AWS_LOG_GROUPS=$(jq -r '.logGroups[].logGroupName' "${TMP}/${AWS_LOGS}_full.json" | head -n1)
+  if [ -z ${AWS_LOG_GROUPS} ]
+  then
+    warn "  There is no log group(s) created yet"
+  else
+    for AWS_LOG_NAME in $(jq -r '.logGroups[].logGroupName' "${TMP}/${AWS_LOGS}_full.json")
+    do
+      inf "  Log group: ${BROWN}${AWS_LOG_NAME}"
+      if [[ ${CLEANING} == yes ]]
+      then
+        inf "    removing log group: ${BROWN}${AWS_LOG_NAME}"
+        if [[ ${AWS_ZONE} == "Y" ]]
+        then
+          aws logs delete-log-group --log-group-name ${AWS_LOG_NAME}
+        elif [[ ${AWS_ZONE} == "N" ]]
+        then
+          aws --profile ${AWS_PROFILE} logs delete-log-group --log-group-name ${AWS_LOG_NAME}
+        fi
+      fi
+    done
+  fi
+fi
+#aws ${AWS_PROFILE_USE_CHECK} logs describe-log-streams --log-group-name "/aws/lambda/${AWS_LAMBDA_FUNCTION_NAME}"
+#aws logs delete-log-stream --log-group-name --log-stream-name
+#AWS logs
+
+#AWS CloudTrial
+if [ -s "${TMP}/${AWS_TRAILS}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}CloudTrails activity:"
+  AWS_TRAILS_LIST=$(jq -r '.trailList[].Name' "${TMP}/${AWS_TRAILS}_full.json")
+  if [ -z ${AWS_TRAILS_LIST} ]
+  then
+    warn "  There is no trails set yet"
+  else
+    for AWS_TRAIL_NAME in $(jq -r '.trailList[].Name' "${TMP}/${AWS_TRAILS}_full.json")
+    do
+      inf "  Trail name: ${GREEN}${AWS_TRAIL_NAME}"
+    done
+  fi
+fi
+#AWS CloudTrial
+
+#AWS compliance
+#checking what is not compliant
+#jq '.ComplianceByConfigRules[] | select((.Compliance.ComplianceType != "INSUFFICIENT_DATA") and (.Compliance.ComplianceType != "COMPLIANT"))' aws_compliance_2020.10.14-14.14.04_full.json
+#AWS compliance
+
+#AWS costs:
+inf ""
+inf "${MAGENTA}Costs:"
+inf "  current month (${BROWN}${CURRENT_MONTH}${CYAN}): ${LIGHT_YELLOW}${CURRENT_MONTH_COSTS} USD"
+if [[ ${VERBOSE} == "yes" ]]
+then
+  IFS=$'\n'
+  inf "    per services:"
+  for AWS_SERVICE_COST_LINE in $(jq -r '.ResultsByTime[].Groups[] | .Keys[] + "~" + .Metrics.NetAmortizedCost.Amount' "${TMP}/${AWS_COSTS_DETAILS}_current_month_full.json" | grep -v "~0.00" | grep -v "~0$")
+  do
+    AWS_SERVICE=$(echo ${AWS_SERVICE_COST_LINE} | awk -F\~ '{printf "%-40s", $1}')
+    AWS_SERVICE_COSTS=$(echo ${AWS_SERVICE_COST_LINE} | awk -F\~ '{print $2}')
+    debug "      ${MAGENTA}${AWS_SERVICE}${BLUE}- ${LIGHT_YELLOW}${AWS_SERVICE_COSTS} USD"
+  done
+fi
+inf "  current year (${BROWN}${CURRENT_YEAR}${CYAN}): ${LIGHT_YELLOW}${CURRENT_YEAR_COSTS} USD"
+#AWS costs:
+
+#Slack notifications
+if [[ ${CLEANING} == no ]]
+then
+  if [[ ${VERBOSE} == yes ]]
+  then
+    debug ""
+    debug "  Slack notification...."
+  fi
+  export SLACK_INSTANCES=$(cat "${TMP}/${AWS_INSTANCES_DETAILS}_slack.out")
+  export SLACK_AMIS=$(cat "${TMP}/${AWS_AMIS_DETAILS}_slack.out")
+  export SLACK_VOLS=$(cat "${TMP}/${AWS_VOLS_DETAILS}_slack.out")
+  source "${SCRIPTS_HOME}/slack_notifiction"
+  if [[ ${VERBOSE} == yes ]]
+  then
+    debug "    has just been sent"
+  fi
+fi
+
+END_AWS_TIME=$(date +%s.%4N)
+
+if [[ ${VERBOSE} == no ]]
+then
+  log_tmp_maintenance
+fi
+
+AWS_TEST_RUNTIME=$(echo "scale=4; x=(${END_AWS_TIME} - ${START_AWS_TIME}); if(x<1) print 0; x" | bc)
+AWS_COLLECTING_TIME=$(echo "scale=4; x=(${END_AWS_COLLECTINGDATA_TIME} - ${START_AWS_COLLECTINGDATA_TIME}); if(x<1) print 0; x" | bc)
+inf "AWS test script has taken: ${WINE}${AWS_TEST_RUNTIME}${CYAN} [s]"
+inf "  collecting data time from AWS has taken: ${WINE}${AWS_COLLECTING_TIME}${CYAN} [s]"

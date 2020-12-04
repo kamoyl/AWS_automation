@@ -86,3 +86,198 @@ And also:
 - *[slack emoji](https://www.webfx.com/tools/emoji-cheat-sheet)*
 - *[markdown guide](https://www.markdownguide.org/basic-syntax)*
 
+
+* __* Added changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 16:09:57 +0100
+    
+    
+
+* __* eventbridge attached - it is deployed right after lambda, and with lambda related__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 16:04:15 +0100
+    
+    * few correction to lambda deployment
+    
+    * changed picking up lambda scripts - now each one in lambda_functions with .py
+    extension will be picked up, and based on it, appropriate event will be created
+    
+
+* __* added checking mandatory aws cli__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 14:38:22 +0100
+    
+    * aws cli version is also checked
+    
+    * added an aws cli installation link to README
+    
+
+* __Add scripts - init of a branch__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 12:40:51 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 2 Dec 2020 13:10:55 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Mon, 16 Nov 2020 12:14:11 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Mon, 16 Nov 2020 10:29:22 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 13 Nov 2020 10:43:50 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 16:38:02 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 16:36:41 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 14:22:06 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 14:21:31 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 11:55:12 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 11:50:45 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 11:36:15 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 10:13:56 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 09:42:19 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 09:26:48 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 11 Nov 2020 13:07:38 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 11 Nov 2020 09:32:03 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 11 Nov 2020 09:24:59 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 11 Nov 2020 09:24:42 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 10 Nov 2020 12:41:11 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 10 Nov 2020 12:35:31 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 6 Nov 2020 13:56:52 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 15:47:50 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 15:42:08 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 12:33:53 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 12:25:49 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 12:18:15 +0100
+    
+    
+
+* __Initial commit__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 12:13:10 +0100
+    
+    
+    
+

@@ -100,16 +100,16 @@ export SUBNET_ID
 export REGION
 export SECURITY_GROUP_ID
 
-AWS_LAMBDA_HANDLER="${AWS_LAMBDA_NAME}.${AWS_HANDLER_FUNCTION_NAME}"
 if [ -s "${TMP}/${AWS_ROLES}_${AWS_EC2_LAMBDA_ROLE}_creation.json" ]
 then
   export EC2_LAMBDA_ROLE_ARN=$(jq -r '.Role.Arn' "${TMP}/${AWS_ROLES}_${AWS_EC2_LAMBDA_ROLE}_creation.json")
 fi
 
-AWS_LAMBDA_SCRIPTS=(report_60-ec2_lambda.py)
+AWS_LAMBDA_SCRIPTS=($(ls "${SCRIPTS_HOME}/lambda_functions/"*.py | awk -F\/ '{print $NF}'))
 for LAMBDA_FUNCTION in ${AWS_LAMBDA_SCRIPTS[*]}
 do
   AWS_LAMBDA_NAME="${AWS_COMMON_NAME}_$(echo ${LAMBDA_FUNCTION} | sed 's/\.py$//g')"
+  AWS_LAMBDA_HANDLER="${AWS_LAMBDA_NAME}.${AWS_HANDLER_FUNCTION_NAME}"
   inf "preparing lambda function: ${YELLOW}${AWS_LAMBDA_NAME}"
   cat "${SCRIPTS_HOME}/lambda_functions/${LAMBDA_FUNCTION}" | envsubst > "${TMP}/${AWS_LAMBDA_NAME}.py"
   if [[ ${ZIP_ON} == yes ]]
@@ -156,20 +156,27 @@ then
       done
       EC2_LAMBDA_FUNCTION_ARN=$(jq -r '.FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json")
       #AWS events
-      # - it doesn;t support cron: aws --profile ${AWS_PROFILE} events create-event-bus --name ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}-bus
+      EVENT_BRIDGE_BUS="${AWS_LAMBDA_NAME}_bus"
+      EVENT_BRIDGE_RULE="${AWS_LAMBDA_NAME}_lambda"
+      # - it doesn;t support cron - named bus: 
+      aws --profile ${AWS_PROFILE} events create-event-bus --name ${EVENT_BRIDGE_RULE} "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_BUS}_full.json" 2>&1
+      # - it doesn;t support cron:
       debug "EventBridge deployment"
-      debug "  putting rule: ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule with cron: (0 8 ? * MON-FRI *)"
-      aws --profile ${AWS_PROFILE} events put-rule --schedule-expression "cron(0 8 ? * MON-FRI *)" --name ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule #--event-bus-name ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}-bus
-      echo "error $?"
+      debug "  putting rule: ${EVENT_BRIDGE_RULE} with cron: (0 8 ? * MON-FRI *)"
+      aws --profile ${AWS_PROFILE} events put-rule --schedule-expression "cron(0 8 ? * MON-FRI *)" --name ${EVENT_BRIDGE_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE}_full.json" 2>&1 
+      ERROR_CODE="$?"
+      warn "error: ${ERROR_CODE}"
       debug "    putting target: \"Id\"=\"1\",\"Arn\"=\"${EC2_LAMBDA_FUNCTION_ARN}\" to the rule: ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule"
-      aws --profile ${AWS_PROFILE} events put-targets --rule ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule --targets "Id"="1","Arn"="${EC2_LAMBDA_FUNCTION_ARN}"
-      echo "error $2"
+      aws --profile ${AWS_PROFILE} events put-targets --rule ${EVENT_BRIDGE_RULE} --targets "Id"="1","Arn"="${EC2_LAMBDA_FUNCTION_ARN}" > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE}_target1_full.json" 2>&1
+      ERROR_CODE="$?"
+      warn "error: ${ERROR_CODE}"
       #AWS events
       #AWS Lambda deployment
       #ToDo: prepare the whole package for python things
-      ##Only for current tests - will be removed soon when lambda script will work as expected
-      ##AWS Lambda invoking-
-      inf "invoking lambda function ${YELLOW}${AWS_LAMBDA_NAME}${RED}$(when event bridge will be configured properly this will be removed)"
+########################
+##Only for current tests - will be removed soon when lambda script will work as expected
+##AWS Lambda invoking
+      inf "invoking lambda function ${YELLOW}${AWS_LAMBDA_NAME}${RED} (when event bridge will be configured properly this will be removed)"
       #logs from CloudWatch
       #aws ${AWS_PROFILE_USE_CHECK} logs get-log-events --log-group-name /aws/lambda/${AWS_LAMBDA_NAME} --log-stream-name $(cat out) --limit 5
       aws ${AWS_PROFILE_USE_CHECK} lambda invoke --function-name ${AWS_LAMBDA_NAME} "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" --log-type Tail --query 'LogResult' --output text |  base64 -d > "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log" 2>&1
@@ -197,6 +204,7 @@ then
     fi
   fi
 done
+########################
 #AWS Lambda invoking
 
 END_DEPLOY_LAMBDA_TIME=$(date +%s.%4N)

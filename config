@@ -237,6 +237,26 @@ then
   failed
 fi
 
+debug "Checking if aws cli exists, and if version is appropriate"
+if ! type aws > /dev/null 2>&1
+then
+  error "There is no \"aws\" command, exiting"
+  failed
+else
+  AWS_CLI_VERSION=$(aws --version | awk '{print $1}' | awk -F\/ '{print $2}' | awk -F\. '{print $1}')
+  if [ ${AWS_CLI_VERSION} -eq 1 ]
+  then
+    debug "aws cli is in version ${YELLOW}1${CYAN}, which WILL cause some issues... please update"
+    debug "  https://docs.aws.amazon.com/cli/latest/userguide/welcome-versions.html"
+  elif [ ${AWS_CLI_VERSION} -eq 2 ]
+  then
+    debug "aws cli is in a ${GREEN}proper${BLUE} version, continue"
+  else
+    error "I cannot recognize aws cli version, existing"
+    failed
+  fi
+fi
+
 if grepcidr "${VIRTUALBOX_NETWORK}" <(echo "${DEFAULT_INET_IP}") > /dev/null
 then
   VIRTUALBOX_IP=${DEFAULT_INET_IP}

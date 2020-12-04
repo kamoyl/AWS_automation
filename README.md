@@ -71,7 +71,7 @@ And also:
   - (SELinux) ```semanage port -a -t ssh_port_t -p tcp 2222```
 
 ### AWS related links
-
+- [AWS cli installation](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html)
 - *[AWS info about policy versioning](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_version.html)*
 - *[automatic backup process EC2 -> S3](https://aws.amazon.com/blogs/startups/how-to-back-up-workloads-with-amazon-s3-ebs/)*
 - *[Running commands on your Linux instance at launch](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html)*
@@ -85,3 +85,4 @@ And also:
 ### other
 - *[slack emoji](https://www.webfx.com/tools/emoji-cheat-sheet)*
 - *[markdown guide](https://www.markdownguide.org/basic-syntax)*
+

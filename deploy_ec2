@@ -50,42 +50,32 @@ if [ ! -z ${EXTERNAL_INET_IP} ]
 then
   if [[ ${EXTERNAL_INET_IP} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
   then
-    #inf "      Adding external/public IP address: ${LIME}${EXTERNAL_INET_IP}${CYAN} to allow ssh to instance(s)"
     aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${EXTERNAL_INET_IP}/32"
   fi
 fi
 
 associating_instance-to-profile ${AWS_INSTANCE_DETAILS_ID} "${AWS_EC2_INSTANCES_PROFILE}"
 AWS_INSTANCE_PROFILES_ASSOCIATION_ID=$(jq -r '.IamInstanceProfileAssociation.AssociationId' "${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${AWS_INSTANCE_DETAILS_ID}_profile_association.json")
-inf "    ${MAGENTA}Checking if instance: ${YELLOW}${AWS_INSTANCE_DETAILS_ID}${MAGENTA} is already up..."
-while ! $(timeout --preserve-status -s 9 -k 6 4 ssh -o "StrictHostKeyChecking no" ${DEPLOY_USER}@${AWS_INSTANCE_DETAILS_IP} 'exit' >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1 ) >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1 
-do
-  for NUMBER in {1..100}
-  do
-    sleep 0.25
-    ProgressBar ${NUMBER} 100
-  done
-  printf '\n'
-done
-inf "      Instance ${YELLOW}${AWS_INSTANCE_DETAILS_ID}${CYAN} is up"
-
+is_instance_up ${AWS_INSTANCE_DETAILS_ID}
 END_READY_INSTANCE_TIME=$(date +%s.%4N)
 AWS_READY_VM_TIME=$(echo "scale=4; x=(${END_READY_INSTANCE_TIME} - ${START_READY_INSTANCE_TIME}); if(x<1) print 0; x" | bc)
 
 aws ec2 describe-instances  ${AWS_PROFILE_USE_CHECK}  --instance-ids ${AWS_INSTANCE_DETAILS_ID} > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json"
 AWS_VOLUME_ID=$(jq -r '.Reservations[].Instances[].BlockDeviceMappings[].Ebs.VolumeId' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
-inf "        Cloning ${BROWN}${AWS_REPO_ADDRESS}"
-ssh -o "StrictHostKeyChecking no" -n -f ${DEPLOY_USER}@${AWS_INSTANCE_DETAILS_IP} "sh -c 'git clone ${AWS_REPO_ADDRESS} > /dev/null 2>&1'"
-ERROR_CODE="$?"
-
-###################
-if [[ ${RUN_SCRIPT} == yes ]]
+if [[ -z ${A} ]]
 then
-  REPO=""
-  REPO_BRANCH=""
-  SCRIPT_NAME=""
-  SCRIPT_PARAMETERS=""
-  aws_run_EC2_code ${REPO} ${REPO_BRANCH} ${SCRIPT_NAME} "${SCRIPT_PARAMETERS}"
-  aws_instance_removal ${AWS_INSTANCE_DETAILS_ID}
+  inf "        Cloning ${BROWN}${AWS_REPO_ADDRESS}"
+  ssh -o "StrictHostKeyChecking no" -n -f ${DEPLOY_USER}@${AWS_INSTANCE_DETAILS_IP} "sh -c 'git clone ${AWS_REPO_ADDRESS} > /dev/null 2>&1'"
+  ERROR_CODE="$?"
+  ###################
+  if [[ ${RUN_SCRIPT} == yes ]]
+  then
+    REPO=""
+    REPO_BRANCH=""
+    SCRIPT_NAME=""
+    SCRIPT_PARAMETERS=""
+    aws_run_EC2_code ${REPO} ${REPO_BRANCH} ${SCRIPT_NAME} "${SCRIPT_PARAMETERS}"
+    aws_instance_removal ${AWS_INSTANCE_DETAILS_ID}
+  fi
+  ###################
 fi
-###################

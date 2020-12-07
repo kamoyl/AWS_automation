@@ -862,6 +862,67 @@ aws_lambda_policy_create()
   fi
 }
 
+lambda_function_deployment()
+{
+  if [ $# -ne 2 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs two parameters: ${YELLOW}(1)handler_name, (2)lambda_name"
+    ERROR_CODE="1"
+    failed
+  else
+    AWS_LAMBDA_FUNCTION_NAME="${1}"
+    AWS_LAMBDA_HANDLER_NAME="${2}"
+  fi
+  inf "Preparing lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+  cat "${SCRIPTS_HOME}/lambda_functions/${LAMBDA_SCRIPT}" | envsubst > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.py"
+  if [[ ${ZIP_ON} == yes ]]
+  then
+    zip -j -q "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.py"
+  elif [[ ${SP_ON} == yes ]]
+  then
+    7z a "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" "${SCRIPTS_HOME}/${AWS_LAMBDA_FUNCTION_NAME}.py" > /dev/null 2>&1
+  fi
+  NUMBER=0
+  while [ ${NUMBER} -le 10 ]
+  do
+    sleep 1
+    ProgressBar ${NUMBER} 10
+    NUMBER=$(( ${NUMBER} + 1))
+  done
+  printf '\n'
+  LAMBDA_FUNCTION_ARN=$(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg ec2_lambda_function ${AWS_LAMBDA_FUNCTION_NAME} '.Functions[] | select(.FunctionName | startswith($aws_default_name) | not) | select(.FunctionName == $ec2_lambda_function) | .FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
+  if [ ! -z ${LAMBDA_FUNCTION_ARN} ]
+  then
+    warn "  Lambda function: ${BLUE}${AWS_LAMBDA_FUNCTION_NAME}${WINE} already exists"
+    EC2_LAMBDA_SCRIPT_ARN=$(jq -r --arg aws_lambda_function_name ${AWS_LAMBDA_FUNCTION_NAME} '.Functions[] | select(.FunctionName == $aws_lambda_function_name) | .FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
+  else
+    inf "deploying lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+    aws ${AWS_PROFILE_USE_CHECK} lambda create-function --timeout 15 --function-name ${AWS_LAMBDA_FUNCTION_NAME} --zip-file fileb://"${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" --handler ${AWS_LAMBDA_HANDLER} --runtime python3.8 --role ${EC2_LAMBDA_ROLE_ARN} > "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json" 2>&1
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -ne 0 ]
+    then
+      error "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${RED} cannot be deployed"
+      ENCODED_ERROR_MESSAGE=$(grep "\[ERROR\]" "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json" | awk -F"failure message:" '{print $2}')
+      DECODED_ERROR_MESSAGE=$(aws ${AWS_PROFILE_USE_CHECK} sts decode-authorization-message --output text --encoded-message ${ENCODED_ERROR_MESSAGE} | jq -r)
+      error "${DECODED_ERROR_MESSAGE}"
+      failed
+    else
+      while [[ $(aws ${AWS_PROFILE_USE_CHECK} lambda get-function --function-name ${AWS_LAMBDA_FUNCTION_NAME} | jq -r '.Configuration.State') == "Pending" ]]
+      do
+        for NUMBER in {1..100}
+        do
+          sleep 0.15
+          aws ${AWS_PROFILE_USE_CHECK} lambda get-function --function-name ${AWS_LAMBDA_FUNCTION_NAME} | jq -r '.Configuration.State'
+          ProgressBar ${NUMBER} 100
+        done
+        printf '\n'
+      done
+      inf "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${CYAN} deployed properly"
+      EC2_LAMBDA_SCRIPT_ARN=$(jq -r '.FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json")
+    fi
+  fi
+}
+
 aws_list-entities-for-policy()
 {
   if [ $# -ne 1 ]
@@ -1185,6 +1246,42 @@ aws_role_create()
     debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.json"
     failed
   fi
+}
+
+is_instance_up()
+{
+  if [ $# -ne 1 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs two parameters: ${YELLOW}(1)InstanceId"
+    ERROR_CODE="1"
+    failed
+  else
+    AWS_EC2_INSTANCE_ID=${1}
+  fi
+  inf "    ${MAGENTA}Checking if instance: ${YELLOW}${AWS_EC2_INSTANCE_ID}${MAGENTA} is already up..."
+  if [ -z ${A} ]
+  then
+    while ! $(timeout --preserve-status -s 9 -k 6 4 ssh -o "StrictHostKeyChecking no" ${DEPLOY_USER}@${AWS_INSTANCE_DETAILS_IP} 'exit' >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1 ) >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1
+    do
+      for NUMBER in {1..100}
+      do
+        sleep 0.25
+        ProgressBar ${NUMBER} 100
+      done
+      printf '\n'
+    done
+  else
+    while ! $(timeout --preserve-status -s 9 -k 6 4 ssh -o "StrictHostKeyChecking no" ec2-user@${AWS_INSTANCE_DETAILS_IP} 'exit' >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1 ) >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1
+    do
+      for NUMBER in {1..100}
+      do
+        sleep 0.25
+        ProgressBar ${NUMBER} 100
+      done
+      printf '\n'
+    done
+  fi
+  inf "      Instance ${YELLOW}${AWS_EC2_INSTANCE_ID}${CYAN} is up"
 }
 
 aws_role_removal()

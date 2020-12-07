@@ -360,7 +360,6 @@ then
     then
       if [ -s "${LOG}/${AWS_INSTANCES_DETAILS}_${VOL_INSTANCE_ID}_termination.log.json" ]
       then
-        #ToDo: check if that instance was NOT with DeleteOnTermination 
         warn  "    Volume: ${YELLOW}${AWS_VOL_ID}${WINE} as attached to just terminated instance: ${YELLOW}${VOL_INSTANCE_ID}${WINE} - will be removed"
         aws_vol_removal ${AWS_VOL_ID}
       fi
@@ -448,7 +447,7 @@ fi
 #AWS AMIs
 inf ""
 inf "${MAGENTA}EC2 AMIs"
-if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ]
+if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | head -n1) ]
 then
   for AWS_AMI_IMAGE_ID in $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
   do
@@ -704,12 +703,12 @@ if [ -s "${TMP}/${AWS_TRAILS}_full.json" ]
 then
   inf ""
   inf "${MAGENTA}CloudTrails activity:"
-  AWS_TRAILS_LIST=$(jq -r '.trailList[].Name' "${TMP}/${AWS_TRAILS}_full.json")
+  AWS_TRAILS_LIST=$(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.trailList[] | select(.Name == $aws_default_name) | not' "${TMP}/${AWS_TRAILS}_full.json" | head -n1)
   if [ -z ${AWS_TRAILS_LIST} ]
   then
     warn "  There is no trails set yet"
   else
-    for AWS_TRAIL_NAME in $(jq -r '.trailList[].Name' "${TMP}/${AWS_TRAILS}_full.json")
+    for AWS_TRAIL_NAME in $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.trailList[] | select(.Name == $aws_default_name) | not' "${TMP}/${AWS_TRAILS}_full.json")
     do
       inf "  Trail name: ${GREEN}${AWS_TRAIL_NAME}"
     done

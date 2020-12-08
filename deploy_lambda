@@ -78,7 +78,6 @@ if [ ! -z ${EXTERNAL_INET_IP} ]
 then
   if [[ ${EXTERNAL_INET_IP} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
   then
-    #inf "      Adding external/public IP address: ${LIME}${EXTERNAL_INET_IP}${CYAN} to allow ssh to instance(s)"
     aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${EXTERNAL_INET_IP}/32"
   fi
 fi
@@ -89,123 +88,67 @@ DEPLOY_TIME=$(echo "scale=4; x=(${END_DEPLOY_TIME} - ${START_DEPLOY_TIME}); if(x
 
 START_DEPLOY_LAMBDA_TIME=$(date +%s.%4N)
 #AWS Lambda deployment
-AWS_HANDLER_FUNCTION_NAME="launchEC2_handler"
-
-export KEY_NAME
-export AWS_EC2_INSTANCES_PROFILE
-export AWS_HANDLER_FUNCTION_NAME
-export LATEST_AMI_ID
-export AWS_INSTANCE_TYPE
-export SUBNET_ID
-export REGION
-export SECURITY_GROUP_ID
-
+#ToDo: prepare the whole package for python things
 if [ -s "${TMP}/${AWS_ROLES}_${AWS_EC2_LAMBDA_ROLE}_creation.json" ]
 then
   export EC2_LAMBDA_ROLE_ARN=$(jq -r '.Role.Arn' "${TMP}/${AWS_ROLES}_${AWS_EC2_LAMBDA_ROLE}_creation.json")
 fi
-
-AWS_LAMBDA_SCRIPTS=($(ls "${SCRIPTS_HOME}/lambda_functions/"*.py | awk -F\/ '{print $NF}'))
-for LAMBDA_FUNCTION in ${AWS_LAMBDA_SCRIPTS[*]}
+AWS_LAMBDA_SCRIPT_NAMES=($(awk -F\~ '{print $1}' "${SCRIPTS_HOME}/lambda_functions/lambda_events.config"))
+for LAMBDA_SCRIPT in ${AWS_LAMBDA_SCRIPT_NAMES[*]}
 do
-  AWS_LAMBDA_NAME="${AWS_COMMON_NAME}_$(echo ${LAMBDA_FUNCTION} | sed 's/\.py$//g')"
+  AWS_LAMBDA_NAME="${AWS_COMMON_NAME}_$(echo ${LAMBDA_SCRIPT} | awk -F\. '{print $1}')_lambda"
+  AWS_HANDLER_FUNCTION_NAME="$(echo ${LAMBDA_SCRIPT} | awk -F\. '{print $1}')_handler"
   AWS_LAMBDA_HANDLER="${AWS_LAMBDA_NAME}.${AWS_HANDLER_FUNCTION_NAME}"
-  inf "preparing lambda function: ${YELLOW}${AWS_LAMBDA_NAME}"
-  cat "${SCRIPTS_HOME}/lambda_functions/${LAMBDA_FUNCTION}" | envsubst > "${TMP}/${AWS_LAMBDA_NAME}.py"
-  if [[ ${ZIP_ON} == yes ]]
-  then
-    zip -j -q "${TMP}/${AWS_LAMBDA_NAME}.zip" "${TMP}/${AWS_LAMBDA_NAME}.py"
-  elif [[ ${SP_ON} == yes ]]
-  then
-    7z a "${TMP}/${AWS_LAMBDA_NAME}.zip" "${SCRIPTS_HOME}/${AWS_LAMBDA_NAME}.py" > /dev/null 2>&1
-  fi
-  NUMBER=0
-  while [ ${NUMBER} -le 10 ]
+  export SHELL_SCRIPT="$(echo "$(cat ${SCRIPTS_HOME}/lambda_functions/$(echo ${LAMBDA_SCRIPT} | awk -F\. '{print $1}').bash)")"
+  export KEY_NAME
+  export AWS_EC2_INSTANCES_PROFILE
+  export AWS_HANDLER_FUNCTION_NAME
+  export AWS_AMI_ID
+  export AWS_INSTANCE_TYPE
+  export SUBNET_ID
+  export REGION
+  export SECURITY_GROUP_ID
+  lambda_function_deployment ${AWS_LAMBDA_NAME} ${AWS_HANDLER_FUNCTION_NAME} 
+  debug "  Lambda EventBridge schedule deployment"
+  IFS=$'\n'
+  for EVENT_SCHEDULE in $(grep ${LAMBDA_SCRIPT} "${SCRIPTS_HOME}/lambda_functions/lambda_events.config" | awk -F\~ '{print $2}')
   do
-    sleep 1
-    ProgressBar ${NUMBER} 10
-    NUMBER=$(( ${NUMBER} + 1))
-  done
-  printf '\n'
-  #checking if lambda doesn't exist yet
-  EC2_LAMBDA_FUNCTION_ARN=$(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg ec2_lambda_function ${AWS_LAMBDA_NAME} '.Functions[] | select(.FunctionName | startswith($aws_default_name) | not) | select(.FunctionName == $ec2_lambda_function) | .FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
-  if [ ! -z ${EC2_LAMBDA_FUNCTION_ARN} ]
-then
-    warn "  Lambda function: ${BLUE}${AWS_LAMBDA_NAME}${WINE} already exists"
-  else
-    inf "deploying lambda function: ${YELLOW}${AWS_LAMBDA_NAME}"
-    aws ${AWS_PROFILE_USE_CHECK} lambda create-function --timeout 15 --function-name ${AWS_LAMBDA_NAME} --zip-file fileb://"${TMP}/${AWS_LAMBDA_NAME}.zip" --handler ${AWS_LAMBDA_HANDLER} --runtime python3.8 --role ${EC2_LAMBDA_ROLE_ARN} > "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" 2>&1
+    echo "EVENT_SCHEDULE=${EVENT_SCHEDULE}"
+    #AWS events
+    EVENT_BRIDGE_RULE="${AWS_LAMBDA_NAME}_rule"
+    #debug "    Creating EventBus (it doesn't support cron jobs)"
+    #aws ${AWS_PROFILE_USE_CHECK} events create-event-bus --name ${AWS_COMMON_NAME}-EC2_scripts_deployment_bus > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_BUS}_full.json" 2>&1
+    debug "    Putting rule: ${EVENT_BRIDGE_RULE} with cron: \"${EVENT_SCHEDULE}\""
+    aws --profile ${AWS_PROFILE} events put-rule --schedule-expression "cron${EVENT_SCHEDULE}" --name ${EVENT_BRIDGE_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE}_full.json" 2>&1
     ERROR_CODE="$?"
-    if [ ${ERROR_CODE} -ne 0 ]
+    warn "error: ${ERROR_CODE}"
+    debug "      Putting target: \"Id\"=\"1\",\"Arn\"=\"${EC2_LAMBDA_SCRIPT_ARN}\" to the rule: ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule"
+    aws --profile ${AWS_PROFILE} events put-targets --rule ${EVENT_BRIDGE_RULE} --targets "Id"="1","Arn"="${EC2_LAMBDA_SCRIPT_ARN}" > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE}_target1_full.json" 2>&1
+    ERROR_CODE="$?"
+    warn "error: ${ERROR_CODE}"
+    #AWS events
+  done
+
+  if [[ ${RUN_SCRIPT} == yes ]]
+  then
+    inf "  Invoking lambda function ${YELLOW}${AWS_LAMBDA_NAME}${RED} (when event bridge will be configured properly this will be removed)"
+    #logs from CloudWatch
+    #aws ${AWS_PROFILE_USE_CHECK} logs get-log-events --log-group-name /aws/lambda/${AWS_LAMBDA_NAME} --log-stream-name $(cat out) --limit 5
+    aws ${AWS_PROFILE_USE_CHECK} lambda invoke --function-name ${AWS_LAMBDA_NAME} "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" --log-type Tail --query 'LogResult' --output text |  base64 -d > "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log" 2>&1
+    ERROR_CODE="$?"
+    INSTANCE_ID_LAMBDA=$(grep "^i-" "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log")
+    aws ${AWS_PROFILE_USE_CHECK} ec2 describe-instances --instance-ids ${INSTANCE_ID_LAMBDA} > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" 2>&1
+    AWS_INSTANCE_DETAILS_IP=$(jq -r '.Reservations[].Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+    if [ -z ${AWS_INSTANCE_DETAILS_IP} ] || [[ ${AWS_INSTANCE_DETAILS_IP} =~ null ]]
     then
-      error "  Lambda function: ${YELLOW}${AWS_LAMBDA_NAME}${RED} cannot be deployed"
-      ENCODED_ERROR_MESSAGE=$(grep "\[ERROR\]" "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" | awk -F"failure message:" '{print $2}')
-      DECODED_ERROR_MESSAGE=$(aws ${AWS_PROFILE_USE_CHECK} sts decode-authorization-message --output text --encoded-message ${ENCODED_ERROR_MESSAGE} | jq -r)
-      error "${DECODED_ERROR_MESSAGE}"
+      error "    Instance hasn't been run, exiting"
       failed
-    else
-      while [[ $(aws ${AWS_PROFILE_USE_CHECK} lambda get-function --function-name ${AWS_LAMBDA_NAME} | jq -r '.Configuration.State') == "Pending" ]]
-      do
-        for NUMBER in {1..100}
-        do
-          sleep 0.15
-          aws ${AWS_PROFILE_USE_CHECK} lambda get-function --function-name ${AWS_LAMBDA_NAME} | jq -r '.Configuration.State'
-          ProgressBar ${NUMBER} 100
-        done
-        printf '\n'
-      done
-      EC2_LAMBDA_FUNCTION_ARN=$(jq -r '.FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json")
-      #AWS events
-      EVENT_BRIDGE_BUS="${AWS_LAMBDA_NAME}_bus"
-      EVENT_BRIDGE_RULE="${AWS_LAMBDA_NAME}_lambda"
-      # - it doesn;t support cron - named bus: 
-      aws --profile ${AWS_PROFILE} events create-event-bus --name ${EVENT_BRIDGE_RULE} "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_BUS}_full.json" 2>&1
-      # - it doesn;t support cron:
-      debug "EventBridge deployment"
-      debug "  putting rule: ${EVENT_BRIDGE_RULE} with cron: (0 8 ? * MON-FRI *)"
-      aws --profile ${AWS_PROFILE} events put-rule --schedule-expression "cron(0 8 ? * MON-FRI *)" --name ${EVENT_BRIDGE_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE}_full.json" 2>&1 
-      ERROR_CODE="$?"
-      warn "error: ${ERROR_CODE}"
-      debug "    putting target: \"Id\"=\"1\",\"Arn\"=\"${EC2_LAMBDA_FUNCTION_ARN}\" to the rule: ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule"
-      aws --profile ${AWS_PROFILE} events put-targets --rule ${EVENT_BRIDGE_RULE} --targets "Id"="1","Arn"="${EC2_LAMBDA_FUNCTION_ARN}" > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE}_target1_full.json" 2>&1
-      ERROR_CODE="$?"
-      warn "error: ${ERROR_CODE}"
-      #AWS events
-      #AWS Lambda deployment
-      #ToDo: prepare the whole package for python things
-########################
-##Only for current tests - will be removed soon when lambda script will work as expected
-##AWS Lambda invoking
-      inf "invoking lambda function ${YELLOW}${AWS_LAMBDA_NAME}${RED} (when event bridge will be configured properly this will be removed)"
-      #logs from CloudWatch
-      #aws ${AWS_PROFILE_USE_CHECK} logs get-log-events --log-group-name /aws/lambda/${AWS_LAMBDA_NAME} --log-stream-name $(cat out) --limit 5
-      aws ${AWS_PROFILE_USE_CHECK} lambda invoke --function-name ${AWS_LAMBDA_NAME} "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" --log-type Tail --query 'LogResult' --output text |  base64 -d > "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log" 2>&1
-      ERROR_CODE="$?"
-      INSTANCE_ID_LAMBDA=$(grep "^i-" "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log")
-      aws ${AWS_PROFILE_USE_CHECK} ec2 describe-instances --instance-ids ${INSTANCE_ID_LAMBDA} > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" 2>&1
-      AWS_INSTANCE_DETAILS_IP=$(jq -r '.Reservations[].Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
-      if [ -z ${AWS_INSTANCE_DETAILS_IP} ] || [[ ${AWS_INSTANCE_DETAILS_IP} =~ null ]]
-      then
-        error "  Instance hasn't been run, exiting"
-        failed
-      fi
-      inf "  Instance: ${YELLOW}${INSTANCE_ID_LAMBDA}${CYAN} with IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN} has just been created"
-      inf "    ${MAGENTA}Checking if instance: ${YELLOW}${INSTANCE_ID_LAMBDA}${MAGENTA} is already up..."
-      while ! $(timeout --preserve-status -s 9 -k 6 4 ssh -o "StrictHostKeyChecking no" ${DEPLOY_USER}@${AWS_INSTANCE_DETAILS_IP} 'exit' >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1 ) >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1
-      do
-        for NUMBER in {1..100}
-        do
-          sleep 0.25
-          ProgressBar ${NUMBER} 100
-        done
-        printf '\n'
-      done
-      inf "      Instance ${YELLOW}${INSTANCE_ID_LAMBDA}${CYAN} is up"
     fi
-  fi
+    inf "    Instance: ${YELLOW}${INSTANCE_ID_LAMBDA}${CYAN} with IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN} has just been created"
+    is_instance_up ${INSTANCE_ID_LAMBDA}
+    ##AWS Lambda invoking
+    fi
 done
-########################
-#AWS Lambda invoking
 
 END_DEPLOY_LAMBDA_TIME=$(date +%s.%4N)
 DEPLOY_LAMBDA_TIME=$(echo "scale=4; x=(${END_DEPLOY_LAMBDA_TIME} - ${START_DEPLOY_LAMBDA_TIME}); if(x<1) print 0; x" | bc)

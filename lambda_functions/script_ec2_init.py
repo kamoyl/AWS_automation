@@ -10,12 +10,11 @@ def ${AWS_HANDLER_FUNCTION_NAME}(event, context):
   print(event)
   #message = event['message']
   #message = 'Hello {} {}!'.format(event['first_name'], event['last_name'])  
-  init_script = """#!/usr/bin/env bash
-                """
+  init_script = """${SHELL_SCRIPT}"""
 
   instance = ec2.run_instances(
       KeyName='${KEY_NAME}',
-      ImageId='${LATEST_AMI_ID}',
+      ImageId='${AWS_AMI_ID}',
       InstanceType='${AWS_INSTANCE_TYPE}',
       SubnetId='${SUBNET_ID}',
       MaxCount=1,

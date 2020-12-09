@@ -86,6 +86,31 @@ And also:
 - *[slack emoji](https://www.webfx.com/tools/emoji-cheat-sheet)*
 - *[markdown guide](https://www.markdownguide.org/basic-syntax)*
 
+* __* small correction of static value when sending slack__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 10:11:08 +0100
+    
+    
+
+* __* added checking of S3 buckets features like secure access instead of apply it each time__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 8 Dec 2020 16:39:53 +0100
+    
+    * Lambda and Evens are now taken from one filke, with schedule, so it shhould
+    be easier then it was
+    
+
+* __* lambda is migrated to bash function, which let&#39;s now deploy more of them, related to evens by name__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Mon, 7 Dec 2020 16:57:07 +0100
+    
+    
+
+* __* Added changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 16:11:24 +0100
+    
+    
 
 * __* Added changelog__
 

@@ -31,7 +31,7 @@ then
     aws_attaching_policy_to_role ${AWS_EC2_LAMBDA_ROLE} "${NAMED_POLICY_ARN}"
   else
     inf "  Policy ${DARK_GREEN}${AWS_EC2_LAMBDA_POLICY}${CYAN} exists"
-    NAMED_ROLE_NAME=$(aws iam list-entities-for-policy ${AWS_PROFILE_USE_CHECK} --policy-arn "${NAMED_POLICY_ARN}" | jq -r '.PolicyRoles[].RoleName' | grep ${AWS_EC2_LAMBDA_ROLE})
+    NAMED_ROLE_NAME=$(aws ${AWS_PROFILE_USE_CHECK[*]} iam list-entities-for-policy --policy-arn "${NAMED_POLICY_ARN}" | jq -r '.PolicyRoles[].RoleName' | grep ${AWS_EC2_LAMBDA_ROLE})
     if [ -z ${NAMED_ROLE_NAME} ]
     then
       echo "Third part of if"
@@ -60,7 +60,7 @@ then
     SECURITY_GROUP_EXISTS="yes"
   else
     aws_ec2_security_group_create "${SECURITY_GROUP_LAMBDA_NAME}"
-    aws ec2 ${AWS_PROFILE_USE_CHECK} describe-security-groups > "${TMP}/${AWS_SECURITY_GROUPS}_full.json"
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups > "${TMP}/${AWS_SECURITY_GROUPS}_full.json"
   fi
 fi
 inf "    ${MAGENTA}Checking if ${YELLOW}${SECURITY_GROUP_LAMBDA_NAME}${MAGENTA} has proper ingress configuration"
@@ -117,13 +117,13 @@ do
     #AWS events
     EVENT_BRIDGE_RULE="${AWS_LAMBDA_NAME}_rule"
     #debug "    Creating EventBus (it doesn't support cron jobs)"
-    #aws ${AWS_PROFILE_USE_CHECK} events create-event-bus --name ${AWS_COMMON_NAME}-EC2_scripts_deployment_bus > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_BUS}_full.json" 2>&1
+    #aws ${AWS_PROFILE_USE_CHECK[*]} events create-event-bus --name ${AWS_COMMON_NAME}-EC2_scripts_deployment_bus > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_BUS}_full.json" 2>&1
     debug "    Putting rule: ${EVENT_BRIDGE_RULE} with cron: \"${EVENT_SCHEDULE}\""
-    aws --profile ${AWS_PROFILE} events put-rule --schedule-expression "cron${EVENT_SCHEDULE}" --name ${EVENT_BRIDGE_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE}_full.json" 2>&1
+    aws ${AWS_PROFILE_USE_CHECK[*]} events put-rule --schedule-expression "cron${EVENT_SCHEDULE}" --name ${EVENT_BRIDGE_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE}_full.json" 2>&1
     ERROR_CODE="$?"
     warn "error: ${ERROR_CODE}"
     debug "      Putting target: \"Id\"=\"1\",\"Arn\"=\"${EC2_LAMBDA_SCRIPT_ARN}\" to the rule: ${AWS_COMMON_NAME}-${AWS_LAMBDA_NAME}_invoke_rule"
-    aws --profile ${AWS_PROFILE} events put-targets --rule ${EVENT_BRIDGE_RULE} --targets "Id"="1","Arn"="${EC2_LAMBDA_SCRIPT_ARN}" > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE}_target1_full.json" 2>&1
+    aws ${AWS_PROFILE_USE_CHECK[*]} events put-targets --rule ${EVENT_BRIDGE_RULE} --targets "Id"="1","Arn"="${EC2_LAMBDA_SCRIPT_ARN}" > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE}_target1_full.json" 2>&1
     ERROR_CODE="$?"
     warn "error: ${ERROR_CODE}"
     #AWS events
@@ -133,11 +133,11 @@ do
   then
     inf "  Invoking lambda function ${YELLOW}${AWS_LAMBDA_NAME}${RED} (when event bridge will be configured properly this will be removed)"
     #logs from CloudWatch
-    #aws ${AWS_PROFILE_USE_CHECK} logs get-log-events --log-group-name /aws/lambda/${AWS_LAMBDA_NAME} --log-stream-name $(cat out) --limit 5
-    aws ${AWS_PROFILE_USE_CHECK} lambda invoke --function-name ${AWS_LAMBDA_NAME} "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" --log-type Tail --query 'LogResult' --output text |  base64 -d > "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log" 2>&1
+    #aws ${AWS_PROFILE_USE_CHECK[*]} logs get-log-events --log-group-name /aws/lambda/${AWS_LAMBDA_NAME} --log-stream-name $(cat out) --limit 5
+    aws ${AWS_PROFILE_USE_CHECK[*]} lambda invoke --function-name ${AWS_LAMBDA_NAME} "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" --log-type Tail --query 'LogResult' --output text |  base64 -d > "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log" 2>&1
     ERROR_CODE="$?"
     INSTANCE_ID_LAMBDA=$(grep "^i-" "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log")
-    aws ${AWS_PROFILE_USE_CHECK} ec2 describe-instances --instance-ids ${INSTANCE_ID_LAMBDA} > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" 2>&1
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-instances --instance-ids ${INSTANCE_ID_LAMBDA} > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" 2>&1
     AWS_INSTANCE_DETAILS_IP=$(jq -r '.Reservations[].Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
     if [ -z ${AWS_INSTANCE_DETAILS_IP} ] || [[ ${AWS_INSTANCE_DETAILS_IP} =~ null ]]
     then

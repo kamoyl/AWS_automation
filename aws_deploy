@@ -149,7 +149,7 @@ if [[ ${HOSTNAME_FQDN} =~ eu-west-1.compute.internal ]]
 then
   AWS_PROFILE_USE_CHECK=""
 else
-  AWS_PROFILE_USE_CHECK="--profile ${AWS_PROFILE}"
+  AWS_PROFILE_USE_CHECK=(--profile ${AWS_PROFILE})
 fi
 
 if [ -z ${u} ]
@@ -207,47 +207,32 @@ then
   inf "${MAGENTA}S3 buckets (${YELLOW}${S3_BUCKETS_AMOUNT} buckets${MAGENTA})"
   for S3_BUCKET in ${AWS_S3_BUCKETS[*]}
   do
-    if grep -qw ${S3_BUCKET} "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output"
-    then
-      inf "  S3 bucket: ${YELLOW}${S3_BUCKET}${CYAN} exists"
-      aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
-      aws_S3_bucket_encryption "${S3_BUCKET}"
-    else
-      warn "  S3 bucket: ${YELLOW}${S3_BUCKET}${WINE} doesn't exist"
-      aws_S3_bucket_create "${S3_BUCKET}"
-      aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
-      aws_S3_bucket_encryption "${S3_BUCKET}"
-      #ToDo: lifecycle of objects/buckets
-      #aws s3api put-bucket-lifecycle-configuration --bucket ${S3_BUCKET} --lifecycle-configuration file://<(echo "'
-      #  {
-      #    "Rules": 
-      #    [
-      #      {
-      #        "Filter": 
-      #        {
-      #          "Prefix": "documents/"
-      #        },
-      #        "Status": "Enabled",
-      #        "Expiration": 
-      #        {
-      #          "Days": 30
-      #        },
-      #        "ID": "MonthlyCleaning"
-      #      }
-      #    ]
-      #  }'")
-      #ToDo: Transfer Acceleration ?
-      #aws s3api put-bucket-accelerate-configuration --bucket bucketname --accelerate-configuration Status=Enabled
-    fi
-  done
-else
-  warn "  S3 bucket: ${YELLOW}${S3_BUCKET}${WINE} doesn't exist"
-  aws_S3_bucket_create "${S3_BUCKET}"
-  aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
-  aws_S3_bucket_encryption "${S3_BUCKET}"
-fi
+    (
+      if grep -qw ${S3_BUCKET} "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output"
+      then
+        inf "  S3 bucket: ${YELLOW}${S3_BUCKET}${CYAN} exists"
+        aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
+        aws_S3_bucket_encryption "${S3_BUCKET}"
+        aws_S3_bucket_lifecycle "${S3_BUCKET}"
+      else
+        warn "  S3 bucket: ${YELLOW}${S3_BUCKET}${WINE} doesn't exist"
+        aws_S3_bucket_create "${S3_BUCKET}"
+        aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
+        aws_S3_bucket_encryption "${S3_BUCKET}"
+        aws_S3_bucket_lifecycle "${S3_BUCKET}"
+      fi
+    ) &
+    done
+  else
+    warn "  S3 bucket: ${YELLOW}${S3_BUCKET}${WINE} doesn't exist"
+    aws_S3_bucket_create "${S3_BUCKET}"
+    aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
+    aws_S3_bucket_encryption "${S3_BUCKET}"
+    aws_S3_bucket_lifecycle "${S3_BUCKET}"
+  fi
 #ToDo: KMS add a key to encrypt S3 buckets...
 #ToDo: add removing S3 buckets function
+wait
 #AWS S3 buckets
 
 #AWS IAM EC2: role
@@ -281,7 +266,7 @@ then
     aws_attaching_policy_to_role ${AWS_EC2_ROLE} "${NAMED_POLICY_ARN}"
   else
     inf "  Policy ${DARK_GREEN}${AWS_EC2_INSTANCES_POLICY}${CYAN} exists"
-    NAMED_ROLE_NAME=$(aws iam list-entities-for-policy ${AWS_PROFILE_USE_CHECK} --policy-arn "${NAMED_POLICY_ARN}" | jq -r '.PolicyRoles[].RoleName' | grep ${AWS_EC2_ROLE})
+    NAMED_ROLE_NAME=$(aws ${AWS_PROFILE_USE_CHECK[*]} iam list-entities-for-policy --policy-arn "${NAMED_POLICY_ARN}" | jq -r '.PolicyRoles[].RoleName' | grep ${AWS_EC2_ROLE})
     if [ -z ${NAMED_ROLE_NAME} ]
     then
       aws_attaching_policy_to_role ${AWS_EC2_ROLE} "${NAMED_POLICY_ARN}"
@@ -308,7 +293,7 @@ then
     inf "  Instance profile ${LIME}${AWS_EC2_INSTANCES_PROFILE}${CYAN} exists"
     export EC2_EC2_INSTANCE_PROFILE_ARN="$(jq -r --arg ec2_profile_name ${AWS_EC2_INSTANCES_PROFILE} '.InstanceProfiles[] | select(.InstanceProfileName == $ec2_profile_name) .Arn' "${TMP}/${AWS_INSTANCE_PROFILES}_full.json")"
     inf "    Checking if role ${YELLOW}${AWS_EC2_ROLE}${CYAN} is added to the profile: ${LIME}${AWS_EC2_INSTANCES_PROFILE}"
-    if aws iam list-instance-profiles-for-role ${AWS_PROFILE_USE_CHECK} --role-name "${AWS_EC2_ROLE}" | grep "${AWS_EC2_ROLE}" > /dev/null 2>&1
+    if aws ${AWS_PROFILE_USE_CHECK[*]} iam list-instance-profiles-for-role --role-name "${AWS_EC2_ROLE}" | grep "${AWS_EC2_ROLE}" > /dev/null 2>&1
     then
       inf "      Role ${YELLOW}${AWS_EC2_ROLE}${CYAN} is already added to the instance profile: ${LIME}${AWS_EC2_INSTANCES_PROFILE}"
     else

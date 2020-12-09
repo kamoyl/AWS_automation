@@ -141,10 +141,10 @@ log_tmp_maintenance()
         S3_BUCKET_NAME="${AWS_COMMON_NAME}-reports"
         warn "    ${BROWN}${BACKUP_OUTPUT_FILE}${WINE} - AWS S3 bucket is not provided, so default one is choosen: ${YELLOW}${S3_BUCKET_NAME}"
         inf "    Copying ${BROWN}${BACKUP_OUTPUT_FILE}${CYAN} to AWS S3 bucket: ${YELLOW}${S3_BUCKET_NAME}"
-        aws s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > /dev/null 2>&1
+        aws ${AWS_PROFILE_USE_CHECK[*]} s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > /dev/null 2>&1
       else
         inf "    Copying ${BROWN}${BACKUP_OUTPUT_FILE}${CYAN} to AWS S3 bucket: ${YELLOW}${S3_BUCKET_NAME}"
-        aws s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > /dev/null 2>&1
+        aws ${AWS_PROFILE_USE_CHECK[*]} s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > /dev/null 2>&1
       fi
     fi
   else

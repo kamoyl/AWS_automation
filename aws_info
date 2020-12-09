@@ -95,7 +95,7 @@ if [[ ${HOSTNAME_FQDN} =~ eu-west-1.compute.internal ]]
 then
   AWS_PROFILE_USE_CHECK=""
 else
-  AWS_PROFILE_USE_CHECK="--profile ${AWS_PROFILE}"
+  AWS_PROFILE_USE_CHECK=(--profile ${AWS_PROFILE})
 fi
 
 if [ ${CALLING} -eq 0 ]
@@ -497,20 +497,24 @@ then
   inf "${MAGENTA}S3 buckets (${YELLOW}${S3_BUCKETS_AMOUNT} buckets${MAGENTA})"
   for S3_BUCKET in $(awk '{print $NF}' "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output")
   do
-    inf "  S3 bucket: ${YELLOW}${S3_BUCKET}${CYAN} exists"
-    aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
-    aws_S3_bucket_encryption "${S3_BUCKET}"
-    if [[ ${AWS_ZONE} == "Y" ]]
-    then
-      inf "    Mounting locally S3 buckets"
-      for BUCKET in ${AWS_S3_BUCKETS[*]}
-      do 
-        sudo mkdir -p /media/${BUCKET}
-        sudo s3fs ${BUCKET} /media/${BUCKET} -o iam_role=${CHECKED_INSTANCE_PROFILE_ROLE},allow_other,use_cache=/tmp/cache,default_acl=public-read,uid=30006,gid=30006
-      done
-    fi
+    (
+      inf "  S3 bucket: ${YELLOW}${S3_BUCKET}${CYAN} exists"
+      aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
+      aws_S3_bucket_encryption "${S3_BUCKET}"
+      aws_S3_bucket_lifecycle "${S3_BUCKET}"
+      if [[ ${AWS_ZONE} == "Y" ]]
+      then
+        inf "    Mounting locally S3 buckets"
+        for BUCKET in ${AWS_S3_BUCKETS[*]}
+        do 
+          sudo mkdir -p /media/${BUCKET}
+          sudo s3fs ${BUCKET} /media/${BUCKET} -o iam_role=${CHECKED_INSTANCE_PROFILE_ROLE},allow_other,use_cache=/tmp/cache,default_acl=public-read,uid=30006,gid=30006
+        done
+      fi
+    ) &
   done
 fi
+wait
 #AWS S3 buckets
 
 #AWS EventBridge
@@ -527,7 +531,7 @@ then
     then
       for EVENT_RULE in $(jq -r --arg aws_common_name ${AWS_COMMON_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | startswith($aws_common_name)) | select(.EventBusName == $event_bus_name) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json")
       do
-        aws --profile ${AWS_PROFILE} events list-targets-by-rule --event-bus-name ${EVENT_BUS_NAME} --rule ${EVENT_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" 2>&1
+        aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --event-bus-name ${EVENT_BUS_NAME} --rule ${EVENT_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" 2>&1
         EVENT_RULE_NAME=${EVENT_RULE}
         EVENT_RULE_BUS=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .EventBusName' "${TMP}/${AWS_EVENTS_RULES}_full.json")
         EVENT_RULE_SCHEDULE=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .ScheduleExpression' "${TMP}/${AWS_EVENTS_RULES}_full.json")
@@ -560,7 +564,7 @@ then
     if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${EVENT_BUS_NAME} != "default" ]]
     then
       inf "      Removing bus: ${DARK_GREEN}${EVENT_BUS_NAME}"
-      aws --profile ${AWS_PROFILE} events delete-event-bus --name ${EVENT_BUS}
+      aws ${AWS_PROFILE_USE_CHECK[*]} events delete-event-bus --name ${EVENT_BUS}
     fi
   done
 else
@@ -665,13 +669,7 @@ then
       if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
       then
         inf "    removing lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
-        if [[ ${AWS_ZONE} == "Y" ]]
-        then
-          aws lambda delete-function --function-name ${AWS_LAMBDA_FUNCTION_NAME}
-        elif [[ ${AWS_ZONE} == "N" ]]
-        then
-          aws --profile ${AWS_PROFILE} lambda delete-function --function-name ${AWS_LAMBDA_FUNCTION_NAME}
-        fi
+        aws ${AWS_PROFILE_USE_CHECK[*]} lambda delete-function --function-name ${AWS_LAMBDA_FUNCTION_NAME}
       fi
     done
   fi
@@ -694,19 +692,13 @@ then
       if [[ ${CLEANING} == yes ]]
       then
         inf "    removing log group: ${BROWN}${AWS_LOG_NAME}"
-        if [[ ${AWS_ZONE} == "Y" ]]
-        then
-          aws logs delete-log-group --log-group-name ${AWS_LOG_NAME}
-        elif [[ ${AWS_ZONE} == "N" ]]
-        then
-          aws --profile ${AWS_PROFILE} logs delete-log-group --log-group-name ${AWS_LOG_NAME}
-        fi
+        aws logs delete-log-group --log-group-name ${AWS_LOG_NAME}
       fi
     done
   fi
 fi
-#aws ${AWS_PROFILE_USE_CHECK} logs describe-log-streams --log-group-name "/aws/lambda/${AWS_LAMBDA_FUNCTION_NAME}"
-#aws logs delete-log-stream --log-group-name --log-stream-name
+#aws ${AWS_PROFILE_USE_CHECK[*]} logs describe-log-streams --log-group-name "/aws/lambda/${AWS_LAMBDA_FUNCTION_NAME}"
+#aws ${AWS_PROFILE_USE_CHECK[*]} logs delete-log-stream --log-group-name --log-stream-name
 #AWS logs
 
 #AWS CloudTrial

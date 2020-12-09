@@ -4,3 +4,4 @@ var
 var_info
 var_deploy
 config_secrets
+etc_ssmtp.conf

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+SCRIPT=$(readlink -f "$0")
+SCRIPTS_HOME=$(dirname "${SCRIPT}")
+PARAMETERS=$(echo "$@" | sed 's/\-l .//g')
+
+if [ $(caller | awk '{print $1}') -eq 0 ]
+then
+  CALLING=0
+  source "${SCRIPTS_HOME}/config"
+  echo -e "${BLUE}${datestring} EXECUTE: ${YELLOW}[ ${LIME}$0 ${PARAMETERS} ${YELLOW} ]${RESET}"
+else
+  CALLING=1
+  if [[ ${VERBOSE} == yes ]]
+  then
+    debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}') ${PARAMETERS} ${YELLOW} ]"
+  fi
+fi
+
+VERBOSE=no
+if [ $# -ne 1 ]
+then
+  error "One parameter [${YELLOW}start,stop${RED}] must be added, exiting"
+  exit 1
+elif [[ ${1} == "start" ]]
+then
+  slack_vm_start
+elif [[ ${1} == "stop" ]]
+then
+  slack_vm_stop
+fi

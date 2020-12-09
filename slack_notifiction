@@ -16,7 +16,7 @@ SLACK_HEADER="
         \\\"color\\\": \\\"danger\\\",
         \\\"title\\\": \\\"AWS (ID: ${AWS_OWNER_ID}) - monthly costs: ${CURRENT_MONTH_COSTS}\$\\\",
         \\\"title_link\\\": \\\"${AWS_LOGIN_URL}\\\",
-        \\\"text\\\": \\\"*AWS Teradara EC2 details*:
+        \\\"text\\\": \\\"*AWS ${AWS_COMMON_NAME} EC2 details*:
                    \\\",
         \\\"fields\\\":
             ["

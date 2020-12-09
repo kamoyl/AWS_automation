@@ -1,0 +1,13 @@
+[Unit]
+Description=Status vm Notification Daemon
+After=network-online.target local-fs.target
+Requires=network.target network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/aws_vm_notifications start
+ExecStop=/usr/local/bin/aws_vm_notifications stop
+
+[Install]
+WantedBy=multi-user.target

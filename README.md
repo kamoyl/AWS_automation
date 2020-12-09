@@ -86,6 +86,58 @@ And also:
 - *[slack emoji](https://www.webfx.com/tools/emoji-cheat-sheet)*
 - *[markdown guide](https://www.markdownguide.org/basic-syntax)*
 
+* __* all scripts are prepared now to be run outside AWS instance, and from it either - it means that cleaning is safe (current instance will be untouched, so as policied, secure groups, etc), profile is taken properly frmo inside EC2 instance and from autiside__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 16:49:09 +0100
+    
+    * added lifecycle to S3 buckets
+    
+    * optimize a bit - run in parallel with shortened time about half
+    
+
+* __* updated gitignore__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 10:52:52 +0100
+    
+    * added some - useful I think - scripts for EC2 instance to deploy - it is even
+    easy to do it by lambda when creating an instance of by deploying a script when
+    deploying instance on the fly
+    
+    * added: zram configuration (useful with small instances), and slack
+    notification WHEN vm is up, and when it is going down - based on systemd
+    
+
+* __* adding changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 10:12:23 +0100
+    
+    
+
+* __* small correction of static value when sending slack__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 10:11:08 +0100
+    
+    
+
+* __* added checking of S3 buckets features like secure access instead of apply it each time__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 8 Dec 2020 16:39:53 +0100
+    
+    * Lambda and Evens are now taken from one filke, with schedule, so it shhould
+    be easier then it was
+    
+
+* __* lambda is migrated to bash function, which let&#39;s now deploy more of them, related to evens by name__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Mon, 7 Dec 2020 16:57:07 +0100
+    
+    
+
+* __* Added changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 16:11:24 +0100
+    
+    
 
 * __* Added changelog__
 

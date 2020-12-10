@@ -11,6 +11,7 @@ then
   export AWS_DEFAULT_NAME="default"
   export AWS_COMMON_NAME="kamil"
   export AWS_LOGIN_URL="https://aws.amazon.com/"
+  export SLACK_CHANNEL_AWS="D1KGVBCUF"
 fi
 #AWS_NETWORK_TAG="" - if empty - all networks will be picked up
 #SOURCE_NETWORKS=""
@@ -45,8 +46,6 @@ then
 else
   SLACK_PROXY_CONTROL="-x ${PROXYS}"
 fi
-
-#EXTERNAL_INET_IP=$(timeout --preserve-status -s 9 -k 3 2 curl ${SLACK_PROXY_CONTROL} -s https://ipinfo.io/ip 2>/dev/null)
 
 AWS_NAMES_PREFIX="$(echo ${USER} | awk '{print $1}')"
 AWS_HOSTNAME_AZ=$(hostname -f | awk -F\. '{print $2}')
@@ -193,8 +192,13 @@ aws_default_subnet()
 {
   if [ -s "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" ]
   then
-    SUBNET_ID=$(shuf -e $(jq -r '.Subnets[] | .SubnetId + "~"  + .Tags[].Value' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" | grep ${AWS_NETWORK_TAG} | awk -F\~ '{print $1}') | tail -n1)
-    AVAILABILITY_ZONE=$(jq -r --arg subet_id ${SUBNET_ID} '.Subnets[] | select(.SubnetId == $subet_id) | .AvailabilityZone' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json")
+    if [ ! -z $(jq -r '.Subnets[] | .Tags[].Value' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" | head -n1) ]
+    then
+      SUBNET_ID=$(shuf -e $(jq -r '.Subnets[] | .SubnetId + "~"  + .Tags[].Value' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" | grep ${AWS_NETWORK_TAG} | awk -F\~ '{print $1}') | tail -n1)
+    else
+      SUBNET_ID=$(shuf -e $(jq -r '.Subnets[] | .SubnetId' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json") | tail -n1)
+    fi
+    AVAILABILITY_ZONE=$(jq -r --arg subnet_id ${SUBNET_ID} '.Subnets[] | select(.SubnetId == $subnet_id) | .AvailabilityZone' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json")
     REGION=$(aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-availability-zones | jq -r --arg availability_zone ${AVAILABILITY_ZONE} '.AvailabilityZones[] | select(.ZoneName == $availability_zone) | .RegionName')
   else
     error "  There is no AWS Networks... exiting"
@@ -575,8 +579,14 @@ aws_vol_state_check()
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
-    error "  Cannot check state of the volume: ${YELLOW}${AWS_VOLUME_ID}"
-    failed
+    if grep -q "volume ${AWS_VOLUME_ID} does not exist" "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json" 
+    then
+      warn "  Volume ${YELLOW}${AWS_VOLUME_ID}${WINE} has not existed already"
+    else
+      error "  Cannot check state of the volume: ${YELLOW}${AWS_VOLUME_ID}"
+      debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json"
+      debug "      $(cat ${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json)"
+    fi
   else
     VOLUME_STATE_ATTACHED=$(jq -r '.Volumes[].Attachments[].State' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
   fi
@@ -592,6 +602,7 @@ aws_vol_removal()
   else
     AWS_VOLUME_ID="${1}"
   fi
+  #ToDo:  if volume was already removed ?
   aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-volumes --volume-ids ${AWS_VOLUME_ID} > "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json" 2>&1 
   DELETE_ON_TERMINATION=$(jq -r '.Volumes[].Attachments[].DeleteOnTermination' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
   AWS_VOLUME_INSTANCE_ID=$(jq -r '.Volumes[].Attachments[].InstanceId' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
@@ -888,17 +899,48 @@ aws_policy_removal()
     failed
   else
     AWS_POLICY_ARN="${1}"
+    AWS_POLICY_NAME=$(aws ${AWS_PROFILE_USE_CHECK[*]} iam list-policies | jq -r --arg aws_policy_arn ${AWS_POLICY_ARN} '.Policies[] | select(.Arn == $aws_policy_arn) | .PolicyName')
   fi
-  inf "      Removing policy: ${DARK_GREEN}${AWS_IAM_POLICY_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-policy --policy-arn "${AWS_POLICY_ARN}"  > "${LOG}/${AWS_POLICIES}_${AWS_IAM_POLICY_NAME}_policy_deletion.output" 2>&1
+  inf "      Removing policy: ${DARK_GREEN}${AWS_POLICY_NAME}"
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-policy --policy-arn "${AWS_POLICY_ARN}"  > "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_policy_deletion.log" 2>&1
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
-    error "        policy: ${DARK_GREEN}${AWS_IAM_POLICY_NAME}${RED} cannot be removed, exiting"
-    debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_IAM_POLICY_NAME}_policy_deletion.output"
-    failed
+    if grep -q AccessDenied "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_policy_deletion.log"
+    then
+      warn "        Policy: ${DARK_GREEN}${AWS_POLICY_NAME}${WINE} cannot be removed due to permissions..."
+    elif grep -q DeleteConflict "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_policy_deletion.log"
+    then
+      warn "        Policy: ${DARK_GREEN}${AWS_POLICY_NAME}${WINE} is still attached to entities:"
+      aws  ${AWS_PROFILE_USE_CHECK[*]} iam list-entities-for-policy --policy-arn "${AWS_POLICY_ARN}" > "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_entities.json" 2>&1
+      if [ ! -z $(jq -r '.PolicyGroups[]' "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_entities.json" | head -n1) ]
+      then
+        for POLICY_GROUP_ENT in $(jq -r '.PolicyGroups[].GroupName' "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_entities.json")
+        do
+          warn "          Policy group: ${MAGENTA}${POLICY_GROUP_ENT}"
+        done
+      fi
+      if [ ! -z $(jq -r '.PolicyUsers[]' "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_entities.json" | head -n1) ]
+      then
+        for POLICY_USER_ENT in $(jq -r '.PolicyUsers[].UserName' "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_entities.json")
+        do
+          warn "          Policy user: ${MAGENTA}${POLICY_USER_ENT}"
+        done
+      fi
+      if [ ! -z $(jq -r '.PolicyRoles[]' "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_entities.json" | head -n1) ]
+      then
+        for POLICY_ROLE_ENT in $(jq -r '.PolicyRoles[].RoleName' "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_entities.json")
+        do
+          warn "          Policy role: ${MAGENTA}${POLICY_ROLE_ENT}"
+        done
+      fi
+    else
+      error "        policy: ${DARK_GREEN}${AWS_POLICY_NAME}${RED} cannot be removed, exiting"
+      debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_policy_deletion.json"
+      failed
+    fi
   else
-    inf "        policy: ${DARK_GREEN}${AWS_IAM_POLICY_NAME}${CYAN} removed properly"
+    inf "        policy: ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} removed properly"
   fi
 }
 
@@ -920,12 +962,12 @@ aws_attaching_policy_to_role()
     AWS_POLICY_NAME=$(jq -r --arg prefixed_policy_arn "${AWS_POLICY_ARN}" 'select(.Arn == $prefixed_policy_arn) | .PolicyName' "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json")
   fi
   inf "    Attaching policy: ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} to role: ${YELLOW}${AWS_ROLE_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam attach-role-policy --role-name ${AWS_ROLE_NAME} --policy-arn "${AWS_POLICY_ARN}" > "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_attaching.output" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam attach-role-policy --role-name ${AWS_ROLE_NAME} --policy-arn "${AWS_POLICY_ARN}" > "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_attaching.log" 2>&1
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "      Policy: ${DARK_GREEN}${AWS_POLICY_NAME}${RED} cannot be attached to role: ${YELLOW}${AWS_ROLE_NAME}${RED}, exiting"
-    debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_attaching.output"
+    debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_attaching.log"
     failed
   else
     inf "      Policy: ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} attached properly to role: ${YELLOW}${AWS_ROLE_NAME}"
@@ -942,17 +984,18 @@ aws_detaching_policy_from_role()
   else
     AWS_IAM_ROLE_NAME=${1}
     AWS_POLICY_ARN="${2}"
+    AWS_POLICY_NAME=$(aws ${AWS_PROFILE_USE_CHECK[*]} iam list-policies | jq -r --arg aws_policy_arn ${AWS_POLICY_ARN} '.Policies[] | select(.Arn == $aws_policy_arn) | .PolicyName')
   fi
-  inf "      Detaching policy: ${DARK_GREEN}${AWS_IAM_POLICY_NAME}${CYAN} from role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN}..."
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam detach-role-policy --role-name ${AWS_IAM_ROLE_NAME} --policy-arn "${AWS_IAM_POLICY_ARN}" > "${LOG}/${AWS_POLICIES}_${AWS_IAM_POLICY_NAME}_detaching.output" 2>&1
+  inf "      Detaching policy: ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} from role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN}..."
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam detach-role-policy --role-name ${AWS_IAM_ROLE_NAME} --policy-arn "${AWS_IAM_POLICY_ARN}" > "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_detaching.log" 2>&1
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
-    error "        Policy: ${DARK_GREEN}${AWS_IAM_POLICY_NAME}${RED} cannot be detached from role: ${YELLOW}${AWS_IAM_ROLE_NAME}${RED}, exiting"
-    debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_IAM_POLICY_NAME}_detaching.output"
+    error "        Policy: ${DARK_GREEN}${AWS_POLICY_NAME}${RED} cannot be detached from role: ${YELLOW}${AWS_IAM_ROLE_NAME}${RED}, exiting"
+    debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_detaching.log"
     failed
   else
-    inf "        Policy: ${DARK_GREEN}${AWS_IAM_POLICY_NAME}${CYAN} detached properly from role: ${YELLOW}${AWS_IAM_ROLE_NAME}"
+    inf "        Policy: ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} detached properly from role: ${YELLOW}${AWS_IAM_ROLE_NAME}"
   fi
 }
 
@@ -1032,12 +1075,12 @@ aws_instance-profile_removal()
     AWS_INSTANCE_PROFILE_NAME="${1}"
   fi
   inf "        Removing instance_profile"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-instance-profile --instance-profile-name ${AWS_INSTANCE_PROFILE_NAME} > "${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_deletion.output" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-instance-profile --instance-profile-name ${AWS_INSTANCE_PROFILE_NAME} > "${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_deletion.log" 2>&1
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "         instance profile: ${DARK_GREEN}${AWS_INSTANCE_PROFILE_NAME}${RED} cannot be removed, exiting"
-    debug "           LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_deletion.output"
+    debug "           LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_deletion.log"
     failed
   else
     inf "          instance profile: ${DARK_GREEN}${AWS_INSTANCE_PROFILE_NAME}${CYAN} removed properly"
@@ -1056,12 +1099,12 @@ aws_removing_role_from_instance_profile()
     AWS_INSTANCE_PROFILE_NAME="${2}"
   fi
   inf "        Removing role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN} from instance profile: ${LIME}${AWS_INSTANCE_PROFILE_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam remove-role-from-instance-profile --instance-profile-name "${AWS_INSTANCE_PROFILE_NAME}" --role-name "${AWS_IAM_ROLE_NAME}" > "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_from_instance-profile_deletion.output"
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam remove-role-from-instance-profile --instance-profile-name "${AWS_INSTANCE_PROFILE_NAME}" --role-name "${AWS_IAM_ROLE_NAME}" > "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_from_instance-profile_deletion.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "        Removing role: ${YELLOW}${AWS_IAM_ROLE_NAME}${RED} from instance profile: ${LIME}${AWS_INSTANCE_PROFILE_NAME}${RED} failed, exiting"
-    debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_from_instance-profile_deletion.output"
+    debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_from_instance-profile_deletion.log"
     failed
   else
     inf "          Removing role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN} from instance profile: ${LIME}${AWS_INSTANCE_PROFILE_NAME}${CYAN} succedeed"
@@ -1151,30 +1194,50 @@ is_instance_up()
   else
     AWS_EC2_INSTANCE_ID=${1}
   fi
-  inf "    ${MAGENTA}Checking if instance: ${YELLOW}${AWS_EC2_INSTANCE_ID}${MAGENTA} is already up..."
-  if [ -z ${A} ]
+  NUMBER=0
+  while [ ${NUMBER} -le 8 ]
+  do
+    sleep 1
+    ProgressBar ${NUMBER} 8
+    NUMBER=$(( ${NUMBER} + 1))
+  done
+  printf '\n'
+  if [ -s "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json" ]
   then
-    while ! $(timeout --preserve-status -s 9 -k 6 4 ssh -o "StrictHostKeyChecking no" ${DEPLOY_USER}@${AWS_INSTANCE_DETAILS_IP} 'exit' >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1 ) >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1
-    do
-      for NUMBER in {1..100}
-      do
-        sleep 0.25
-        ProgressBar ${NUMBER} 100
-      done
-      printf '\n'
-    done
-  else
-    while ! $(timeout --preserve-status -s 9 -k 6 4 ssh -o "StrictHostKeyChecking no" ec2-user@${AWS_INSTANCE_DETAILS_IP} 'exit' >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1 ) >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1
-    do
-      for NUMBER in {1..100}
-      do
-        sleep 0.25
-        ProgressBar ${NUMBER} 100
-      done
-      printf '\n'
-    done
+    AWS_EC2_INSTANCE_PRIVATE_IP=$(jq -r '.Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
+  elif [ -s "${TMP}/${AWS_INSTANCES_DETAILS}_${AWS_EC2_INSTANCE_ID}_full.json" ]
+  then
+    AWS_EC2_INSTANCE_PRIVATE_IP=$(jq -r '.Reservations[].Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_${AWS_EC2_INSTANCE_ID}_full.json")
   fi
-  inf "      Instance ${YELLOW}${AWS_EC2_INSTANCE_ID}${CYAN} is up"
+  AWS_EC2_INSTANCE_PUBLIC_IP=$(aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-instances --instance-ids ${AWS_EC2_INSTANCE_ID} | jq -r '.Reservations[].Instances[].PublicIpAddress')
+  inf "    ${MAGENTA}Checking if instance: ${YELLOW}${AWS_EC2_INSTANCE_ID}${MAGENTA} is already up..."
+  inf "      by: ${YELLOW}${DEPLOY_USER}${CYAN} user"
+  if [ -z ${AWS_EC2_INSTANCE_PUBLIC_IP} ] || [[ ${AWS_EC2_INSTANCE_PUBLIC_IP} == "null" ]]
+  then
+    inf "        on private IP: ${LIME}${AWS_EC2_INSTANCE_PRIVATE_IP}"
+    while ! $(timeout --preserve-status -s 9 -k 6 4 ssh -o "StrictHostKeyChecking no" ${DEPLOY_USER}@${AWS_EC2_INSTANCE_PRIVATE_IP} 'exit' >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1 ) >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1
+    do
+      for NUMBER in {1..100}
+      do
+        sleep 0.5
+        ProgressBar ${NUMBER} 100
+      done
+    done
+      printf '\n'
+    inf "      Instance ${YELLOW}${AWS_EC2_INSTANCE_ID}${CYAN} is up"
+  else
+    inf "        on public IP: ${LIME}${AWS_EC2_INSTANCE_PUBLIC_IP}"
+    while ! $(timeout --preserve-status -s 9 -k 6 4 ssh -o "StrictHostKeyChecking no" ${DEPLOY_USER}@${AWS_EC2_INSTANCE_PUBLIC_IP} 'exit' >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1 ) >> "${LOG}/${AWS_INSTANCES_DETAILS}_ssh_testing.log" 2>&1
+    do
+      for NUMBER in {1..100}
+      do
+        sleep 0.5
+        ProgressBar ${NUMBER} 100
+      done
+      printf '\n'
+    done
+    inf "      Instance ${YELLOW}${AWS_EC2_INSTANCE_ID}${CYAN} is up"
+  fi
 }
 
 aws_role_removal()
@@ -1188,13 +1251,26 @@ aws_role_removal()
     AWS_IAM_ROLE_NAME=${1}
   fi
   inf "        Removing role: ${YELLOW}${AWS_IAM_ROLE_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-role --role-name ${AWS_IAM_ROLE_NAME} > "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.output" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-role --role-name ${AWS_IAM_ROLE_NAME} > "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.log" 2>&1
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
-    error "       role: ${YELLOW}${AWS_IAM_ROLE_NAME}${RED} cannot be removed, exiting"
-    debug "         LOG FILE: ${YELLOW}${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.output"
-    failed
+    if grep -q AccessDenied "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.log"
+    then
+      warn "          Role: ${YELLOW}${AWS_IAM_ROLE_NAME}${WINE} cannot be removed due to permissions..."
+    elif grep -q DeleteConflict "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.log"
+    then
+      aws ${AWS_PROFILE_USE_CHECK[*]} iam list-role-policies --role-name ${AWS_IAM_ROLE_NAME} > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_inline_policies.json" 2>&1
+      warn "          Role: ${YELLOW}${AWS_IAM_ROLE_NAME}${WINE} is still attached to policy as entity:"
+      for ROLE_ENTITY in $(jq -r '.PolicyNames[]' "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_inline_policies.json")
+      do
+        warn "            To following inline/managed policy: ${DARK_GREEN}${ROLE_ENTITY}"
+      done
+    else
+      error "       role: ${YELLOW}${AWS_IAM_ROLE_NAME}${RED} cannot be removed, exiting"
+      debug "         LOG FILE: ${YELLOW}${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.log"
+      failed
+    fi
   else
     inf "          role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN} removed properly"
   fi
@@ -1241,11 +1317,11 @@ aws_S3_bucket_create()
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
-    error "    There was an error creating bucket: ${YELLOW}${S3_BUCKET_NAME}"
-    debug "      LOG FILE: ${YELLOW}${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_create.log"
+    error "      There was an error creating bucket: ${YELLOW}${S3_BUCKET_NAME}"
+    debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_create.log"
     failed
   else
-    inf "    S3 bucket: ${YELLOW}${S3_BUCKET_NAME}${CYAN} has been created"
+    inf "      S3 bucket: ${YELLOW}${S3_BUCKET_NAME}${CYAN} has been created"
   fi
 }
 
@@ -1289,13 +1365,13 @@ aws_S3_bucket_secure_access_policy()
   else
     S3_BUCKET_NAME="${1}"
   fi
-  S3_BUCKET_SECURE_POLICY_CHECK=$(aws ${AWS_PROFILE_USE_CHECK[*]} s3api get-bucket-policy --bucket ${S3_BUCKET_NAME} --output text | jq -r '.Statement[] | select(.Condition.Bool."aws:SecureTransport" == "false") | .Effect')
+  S3_BUCKET_SECURE_POLICY_CHECK=$(aws ${AWS_PROFILE_USE_CHECK[*]} s3api get-bucket-policy --bucket ${S3_BUCKET_NAME} --output text 2>/dev/null | jq -r '.Statement[] | select(.Condition.Bool."aws:SecureTransport" == "false") | .Effect')
   if [[ ${S3_BUCKET_SECURE_POLICY_CHECK} == "Deny" ]]
   then
     inf "    S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) policy (${DARK_GREEN}SecureTransport${CYAN}) is applied"
   else
     inf "    Applying bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) policy (${DARK_GREEN}SecureTransport${CYAN}) for ${YELLOW}${S3_BUCKET_NAME}${CYAN}:"
-    echo "      {
+    echo "{
       \"Statement\":
       [
         {
@@ -1364,7 +1440,7 @@ aws_S3_bucket_lifecycle()
       inf "          Lifecycle on S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) applied properly"
     fi
   else
-    inf "        S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) ${DARK_GREEN}lifesyscle${CYAN} is set"
+    inf "        S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) ${DARK_GREEN}lifesycle${CYAN} is set"
   fi
 }
 
@@ -1416,6 +1492,9 @@ if [ $# -ne 1 ]
     if [ ${ERROR_CODE} -eq 0 ]
     then
       inf "      Security group: ${BROWN}${SECURITY_GROUP_ID}${CYAN} has been deleted properly"
+    elif grep -q "cannot be deleted by a user" "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_delete_security_group.json"
+    then
+      warn "      Security group: ${BROWN}${SECURITY_GROUP_ID}${RED} cannot be deleted by the user"
     else
       error "      Security group: ${BROWN}${SECURITY_GROUP_ID}${RED} deletion failed, exiting"
       debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_delete_security_group.json"
@@ -1439,17 +1518,22 @@ aws_security_group_ingress_add()
       debug "      It is local IP"
     fi
   fi
-  inf "      Adding source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${CYAN} to ${YELLOW}${SECURITY_GROUP_ID}${CYAN}, to allow ssh to instance(s)"
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 authorize-security-group-ingress --group-id ${SECURITY_GROUP_ID} --protocol tcp --port 22 --cidr "${INGRESS_CIDR_ADDRESS}" >> "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_ingress.json"  2>&1
-  ERROR_CODE="$?"
-  if [ ${ERROR_CODE} -eq 0 ]
+  if [ -z $(jq -r --arg security_group_id ${SECURITY_GROUP_ID} '.SecurityGroups[] | select(.GroupId == $security_group_id) | .IpPermissions[].IpRanges[].CidrIp' "${TMP}/${AWS_SECURITY_GROUPS}_full.json" | grep "${INGRESS_CIDR_ADDRESS}") ]
   then
-    inf "        Adding source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${CYAN} succedeed"
-    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups > "${TMP}/${AWS_SECURITY_GROUPS}_full.json" 2>&1
+    inf "      Adding source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${CYAN} to ${YELLOW}${SECURITY_GROUP_ID}${CYAN}, to allow ssh to instance(s)"
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 authorize-security-group-ingress --group-id ${SECURITY_GROUP_ID} --protocol tcp --port 22 --cidr "${INGRESS_CIDR_ADDRESS}" >> "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_ingress.json"  2>&1
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      inf "        Adding source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${CYAN} succedeed"
+      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups --group-ids ${SECURITY_GROUP_ID} > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.json" 2>&1
+    else
+      error "        Adding source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${RED} failed, exiting"
+      debug "          LOG FILE: ${YELLOW}${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_ingress.json"
+      failed
+    fi
   else
-    error "        Adding source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${RED} failed, exiting"
-    debug "          LOG FILE: ${YELLOW}${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_ingress.json"
-    failed
+    warn "      Source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${WINE} has already been added to ${YELLOW}${SECURITY_GROUP_ID}${WINE} security group"
   fi
 }
 
@@ -1524,4 +1608,3 @@ aws_run_EC2_code()
 }
 
 debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}')${YELLOW} ]"
-

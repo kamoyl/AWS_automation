@@ -59,15 +59,18 @@ do
   ) &
 done
 
-for AWS_DEFAULT_POLICY in $(jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name)) | .PolicyName' "${TMP}/${AWS_POLICIES}_full.json")
-do
-  (
-  jq -r --arg default_policy ${AWS_DEFAULT_POLICY} '.Policies[] | select(.PolicyName == $default_policy)' "${TMP}/${AWS_POLICIES}_full.json" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json"  2>&1
-  AWS_DEFAULT_POLICY_VERSION=$(jq -r '.DefaultVersionId' "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json")
-  AWS_DEFAULT_POLICY_ARN=$(jq -r '.Arn' "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json")
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam get-policy-version  ${AWS_PROFILE_USE_CHECK[*]} --policy-arn "${AWS_DEFAULT_POLICY_ARN}" --version-id "${AWS_DEFAULT_POLICY_VERSION}" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_def_full.json"  2>&1
-  ) &
-done
+if [ ! -z $(jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name)) | .PolicyName' "${TMP}/${AWS_POLICIES}_full.json" | head -n1) ]
+then
+  for AWS_DEFAULT_POLICY in $(jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name)) | .PolicyName' "${TMP}/${AWS_POLICIES}_full.json")
+  do
+    (
+    jq -r --arg default_policy ${AWS_DEFAULT_POLICY} '.Policies[] | select(.PolicyName == $default_policy)' "${TMP}/${AWS_POLICIES}_full.json" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json"  2>&1
+    AWS_DEFAULT_POLICY_VERSION=$(jq -r '.DefaultVersionId' "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json")
+    AWS_DEFAULT_POLICY_ARN=$(jq -r '.Arn' "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json")
+    aws ${AWS_PROFILE_USE_CHECK[*]} iam get-policy-version  ${AWS_PROFILE_USE_CHECK[*]} --policy-arn "${AWS_DEFAULT_POLICY_ARN}" --version-id "${AWS_DEFAULT_POLICY_VERSION}" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_def_full.json"  2>&1
+    ) &
+  done
+fi
 
 wait
 #end separating data

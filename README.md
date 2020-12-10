@@ -3,6 +3,8 @@ AWS EC2, S3 and some other (lambda, SNS, CloudWatch, CloudTrail etc) automation 
 
 Because it is a cloud environemnt and some things takes time (deployment of instance, instance being actually up, creating snapshot or image) - all commands are checking if resource is already available.
 
+It works both: in hybrid clouds, and in public one either (I tested it against [CloudGuru sandboxes](https://learn.acloud.guru/cloud-playground/cloud-sandboxes) and it works fine (despite some restriction which is described on CloudGuru site)
+
 ## prerequisites:
 - some more-or-less obvious tools: ip, ifconfig, bc, and [grepcidr](http://www.pc-tools.net/unix/grepcidr/)
 - already created VPC, IGW and subnet (usually defined by default, tested on newly created free tier account) - there is an assumptions they exist

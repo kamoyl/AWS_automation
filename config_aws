@@ -192,8 +192,7 @@ aws_default_subnet()
 {
   if [ -s "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" ]
   then
-    #ToDo: If there is no Tag, then pick up whichever you have
-    if jq -r '.Subnets[] | .Tags[].Value' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" 2>/dev/null
+    if [ ! -z $(jq -r '.Subnets[] | .Tags[].Value' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" | head -n1) ]
     then
       SUBNET_ID=$(shuf -e $(jq -r '.Subnets[] | .SubnetId + "~"  + .Tags[].Value' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" | grep ${AWS_NETWORK_TAG} | awk -F\~ '{print $1}') | tail -n1)
     else
@@ -580,9 +579,14 @@ aws_vol_state_check()
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
-    error "  Cannot check state of the volume: ${YELLOW}${AWS_VOLUME_ID}"
-    debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json"
-    debug "      $(cat ${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json)"
+    if grep -q "volume ${AWS_VOLUME_ID} does not exist" "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json" 
+    then
+      warn "  Volume ${YELLOW}${AWS_VOLUME_ID}${WINE} has not existed already"
+    else
+      error "  Cannot check state of the volume: ${YELLOW}${AWS_VOLUME_ID}"
+      debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json"
+      debug "      $(cat ${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json)"
+    fi
   else
     VOLUME_STATE_ATTACHED=$(jq -r '.Volumes[].Attachments[].State' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
   fi
@@ -600,7 +604,6 @@ aws_vol_removal()
   fi
   #ToDo:  if volume was already removed ?
   aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-volumes --volume-ids ${AWS_VOLUME_ID} > "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json" 2>&1 
-  cat ${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json
   DELETE_ON_TERMINATION=$(jq -r '.Volumes[].Attachments[].DeleteOnTermination' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
   AWS_VOLUME_INSTANCE_ID=$(jq -r '.Volumes[].Attachments[].InstanceId' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
   if [ -z ${DELETE_ON_TERMINATION} ] || [[ ${DELETE_ON_TERMINATION} == "false" ]]
@@ -1191,13 +1194,14 @@ is_instance_up()
   else
     AWS_EC2_INSTANCE_ID=${1}
   fi
-    NUMBER=0
-    while [ ${NUMBER} -le 8 ]
-    do
-      sleep 1
-      ProgressBar ${NUMBER} 8
-      NUMBER=$(( ${NUMBER} + 1))
-    done
+  NUMBER=0
+  while [ ${NUMBER} -le 8 ]
+  do
+    sleep 1
+    ProgressBar ${NUMBER} 8
+    NUMBER=$(( ${NUMBER} + 1))
+  done
+  printf '\n'
   if [ -s "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json" ]
   then
     AWS_EC2_INSTANCE_PRIVATE_IP=$(jq -r '.Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
@@ -1205,8 +1209,7 @@ is_instance_up()
   then
     AWS_EC2_INSTANCE_PRIVATE_IP=$(jq -r '.Reservations[].Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_${AWS_EC2_INSTANCE_ID}_full.json")
   fi
-  AWS_EC2_INSTANCE_PUBLIC_IP=$(aws --profile guru ec2 describe-instances --instance-ids ${AWS_EC2_INSTANCE_ID} | jq -r '.Reservations[].Instances[].PublicIpAddress')
-  echo "AWS_EC2_INSTANCE_PUBLIC_IP=${AWS_EC2_INSTANCE_PUBLIC_IP}"
+  AWS_EC2_INSTANCE_PUBLIC_IP=$(aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-instances --instance-ids ${AWS_EC2_INSTANCE_ID} | jq -r '.Reservations[].Instances[].PublicIpAddress')
   inf "    ${MAGENTA}Checking if instance: ${YELLOW}${AWS_EC2_INSTANCE_ID}${MAGENTA} is already up..."
   inf "      by: ${YELLOW}${DEPLOY_USER}${CYAN} user"
   if [ -z ${AWS_EC2_INSTANCE_PUBLIC_IP} ] || [[ ${AWS_EC2_INSTANCE_PUBLIC_IP} == "null" ]]
@@ -1219,8 +1222,8 @@ is_instance_up()
         sleep 0.5
         ProgressBar ${NUMBER} 100
       done
-      printf '\n'
     done
+      printf '\n'
     inf "      Instance ${YELLOW}${AWS_EC2_INSTANCE_ID}${CYAN} is up"
   else
     inf "        on public IP: ${LIME}${AWS_EC2_INSTANCE_PUBLIC_IP}"
@@ -1257,8 +1260,7 @@ aws_role_removal()
       warn "          Role: ${YELLOW}${AWS_IAM_ROLE_NAME}${WINE} cannot be removed due to permissions..."
     elif grep -q DeleteConflict "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.log"
     then
-      #Inline policies or managed policies
-      aws --profile guru iam list-role-policies --role-name ${AWS_IAM_ROLE_NAME} > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_inline_policies.json" 2>&1
+      aws ${AWS_PROFILE_USE_CHECK[*]} iam list-role-policies --role-name ${AWS_IAM_ROLE_NAME} > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_inline_policies.json" 2>&1
       warn "          Role: ${YELLOW}${AWS_IAM_ROLE_NAME}${WINE} is still attached to policy as entity:"
       for ROLE_ENTITY in $(jq -r '.PolicyNames[]' "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_inline_policies.json")
       do
@@ -1288,16 +1290,6 @@ associating_instance-to-profile()
   inf "Associating EC2 instance: ${YELLOW}${EC2_INSTANCE_ID}${CYAN} to instance profile: ${LIME}${EC2_INSTANCE_PROFILE_NAME}"
   aws ${AWS_PROFILE_USE_CHECK[*]} ec2 associate-iam-instance-profile --instance-id ${EC2_INSTANCE_ID} --iam-instance-profile Name="${EC2_INSTANCE_PROFILE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${EC2_INSTANCE_ID}_profile_association.json" 2>&1
   ERROR_CODE="$?"
-  jq -r '.IamInstanceProfileAssociation.State' "${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${EC2_INSTANCE_ID}_profile_association.json"
-  while [[ $(aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-images ${AWS_PROFILE_USE_CHECK[*]} --image-ids  ${LATEST_AMI_ID} | jq -r '.Images[].State') == "available" ]]
-  do
-    for NUMBER in {1..20}
-    do
-      sleep 0.1
-      ProgressBar ${NUMBER} 20
-    done
-    printf '\n'
-  done
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "  EC2 instance: ${YELLOW}${EC2_INSTANCE_ID}${RED} cannot be associated to instance-profile: ${LIME}${EC2_INSTANCE_PROFILE_NAME}${RED}, exiting"

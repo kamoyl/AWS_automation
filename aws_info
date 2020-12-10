@@ -306,7 +306,8 @@ then
     then
       if  [[ ${AWS_INSTANCE_STATE^^} == "TERMINATED" ]]
       then
-        inf  "    ${YELLOW}${AWS_INSTANCE_ID}${CYAN} is already terminated..."
+        inf "    ${WINE}Terminating instance: ${YELLOW}${AWS_INSTANCE_ID}"
+        inf  "      Instance ${YELLOW}${AWS_INSTANCE_ID}${CYAN} is already terminated..."
       elif [[ ${AWS_INSTANCE_ID} != ${LOCAL_EC2_INSTANCE} ]]
       then
         aws_instance_removal ${AWS_INSTANCE_ID}

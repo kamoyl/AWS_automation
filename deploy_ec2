@@ -12,6 +12,7 @@ then
     SECURITY_GROUP_EXISTS="yes"
   else
     aws_ec2_security_group_create "${SECURITY_GROUP_EC2_NAME}"
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups > "${TMP}/${AWS_SECURITY_GROUPS}_full.json"
   fi
 fi
 #AWS EC2: security groups
@@ -21,26 +22,40 @@ DEPLOY_TIME=$(echo "scale=4; x=(${END_DEPLOY_TIME} - ${START_DEPLOY_TIME}); if(x
 START_DEPLOY_INSTANCE_TIME=$(date +%s.%4N)
 inf ""
 inf "${MAGENTA}Creating new instance based on AMI: ${YELLOW}${AWS_AMI_ID}${MAGENTA} and instance_type ${LIME}${AWS_INSTANCE_TYPE}${MAGENTA} in ${DARK_GREEN}${SECURITY_GROUP_ID}${MAGENTA} security group ID"
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2 run-instances --image-id ${AWS_AMI_ID} --count 1 --instance-type ${AWS_INSTANCE_TYPE} --key-name ${KEY_NAME} --subnet-id ${SUBNET_ID} --security-group-ids ${SECURITY_GROUP_ID} > "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json" 2>&1 &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2 run-instances --image-id ${AWS_AMI_ID} --count 1 --instance-type ${AWS_INSTANCE_TYPE} --key-name ${KEY_NAME} --subnet-id ${SUBNET_ID} --security-group-ids ${SECURITY_GROUP_ID} > "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json" 2>&1 & CREATE_INSTANCE_PID="$!"
 while [[ -n $(jobs -r) ]]
 do
   for NUMBER in {1..100}
   do
-    sleep 0.15
+    sleep 0.1
     ProgressBar ${NUMBER} 100
   done
   printf '\n'
+  ERROR_CODE="$?"
+  debug "ERROR_CODE=${ERROR_CODE}"
+  debug "CREATE_INSTANCE_PID=${CREATE_INSTANCE_PID}"
+  if [ ${ERROR_CODE} -ne 0 ]
+  then
+    error "  Instance cannot be created, exiting"
+    debug "    $(grep -i error "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")"
+    failed
+  fi
 done
-AWS_INSTANCE_DETAILS_IP=$(jq -r ".Instances[].PrivateIpAddress" "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
-AWS_INSTANCE_DETAILS_ID=$(jq -r ".Instances[].InstanceId" "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
+AWS_INSTANCE_DETAILS_PUBLIC_IP=$(jq -r '.Instances[].PublicIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
+AWS_INSTANCE_DETAILS_IP=$(jq -r '.Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
+AWS_INSTANCE_DETAILS_ID=$(jq -r '.Instances[].InstanceId' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
 sleep 2
 #ToDo: aws ${AWS_PROFILE_USE_CHECK[*]} ec2 modify-instance-attribute --instance-id ${AWS_INSTANCE_DETAILS_ID} --block-device-mappings "[{\"DeviceName\": \"/dev/sda1\",\"Ebs\":{\"DeleteOnTermination\":true}}]"
 END_DEPLOY_INSTANCE_TIME=$(date +%s.%4N)
 AWS_START_VM_TIME=$(echo "scale=4; x=(${END_DEPLOY_INSTANCE_TIME} - ${START_DEPLOY_INSTANCE_TIME}); if(x<1) print 0; x" | bc)
 START_READY_INSTANCE_TIME=$(date +%s.%4N)
-inf "  Instance: ${YELLOW}${AWS_INSTANCE_DETAILS_ID}${CYAN} with IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN} has just been created"
+if [ -z ${AWS_INSTANCE_DETAILS_PUBLIC_IP} ] || [[ ${AWS_INSTANCE_DETAILS_PUBLIC_IP} == "null" ]]
+then
+  inf "  Instance: ${YELLOW}${AWS_INSTANCE_DETAILS_ID}${CYAN} with private IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN} has just been created"
+else
+  inf "  Instance: ${YELLOW}${AWS_INSTANCE_DETAILS_ID}${CYAN} with private IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN} (public IP: ${GREEN}${AWS_INSTANCE_DETAILS_PUBLIC_IP}${CYAN}) has just been created"
+fi
 inf "    ${MAGENTA}Checking if ${YELLOW}${DEFAULT_INET_IP}${MAGENTA} may log in by ssh to instance: ${YELLOW}${AWS_INSTANCE_DETAILS_ID}"
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups > "${TMP}/${AWS_SECURITY_GROUPS}_full.json"
 SECURITY_GROUP_INGRESS_FOR_LOCAL_IP=$(jq -r --arg default_inet_ip ${DEFAULT_INET_IP} '.SecurityGroups[].IpPermissions[].IpRanges[] | select(.CidrIp | startswith($default_inet_ip)) | .CidrIp' "${TMP}/${AWS_SECURITY_GROUPS}_full.json")
 if [ -z ${SECURITY_GROUP_INGRESS_FOR_LOCAL_IP} ]
 then

@@ -137,14 +137,20 @@ do
     aws ${AWS_PROFILE_USE_CHECK[*]} lambda invoke --function-name ${AWS_LAMBDA_NAME} "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" --log-type Tail --query 'LogResult' --output text |  base64 -d > "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log" 2>&1
     ERROR_CODE="$?"
     INSTANCE_ID_LAMBDA=$(grep "^i-" "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log")
-    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-instances --instance-ids ${INSTANCE_ID_LAMBDA} > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" 2>&1
-    AWS_INSTANCE_DETAILS_IP=$(jq -r '.Reservations[].Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
-    if [ -z ${AWS_INSTANCE_DETAILS_IP} ] || [[ ${AWS_INSTANCE_DETAILS_IP} =~ null ]]
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-instances --instance-ids ${INSTANCE_ID_LAMBDA} > "${TMP}/${AWS_INSTANCES_DETAILS}_${INSTANCE_ID}_full.json" 2>&1
+    AWS_INSTANCE_DETAILS_IP=$(jq -r '.Reservations[].Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_${INSTANCE_ID}_full.json")
+    AWS_INSTANCE_DETAILS_PUBLIC_IP=$(jq -r '.Reservations[].Instances[].PublicIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_${INSTANCE_ID}_full.json")
+    if [ -z ${AWS_INSTANCE_DETAILS_IP} ] || [[ ${AWS_INSTANCE_DETAILS_IP} == "null" ]]
     then
       error "    Instance hasn't been run, exiting"
       failed
     fi
-    inf "    Instance: ${YELLOW}${INSTANCE_ID_LAMBDA}${CYAN} with IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN} has just been created"
+    if [ -z ${AWS_INSTANCE_DETAILS_PUBLIC_IP} ] || [[ ${AWS_INSTANCE_DETAILS_PUBLIC_IP} == "null" ]]
+    then
+      inf "    Instance: ${YELLOW}${INSTANCE_ID_LAMBDA}${CYAN} with IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN} has just been created"
+    else
+      inf "  Instance: ${YELLOW}${INSTANCE_ID_LAMBDA}${CYAN} with private IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN} (public IP: ${GREEN}${AWS_INSTANCE_DETAILS_PUBLIC_IP}${CYAN}) has just been created"
+    fi
     is_instance_up ${INSTANCE_ID_LAMBDA}
     ##AWS Lambda invoking
     fi

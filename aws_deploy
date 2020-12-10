@@ -59,9 +59,9 @@ $0 -L/-E -p PROFILE_NAME  [-u REMOTE_USERNAME] [-R] [-A AMI_ID] [-I INSTANCE_TYP
     ${LIME}-u${BLUE}  ${WINE}[optional]${BLUE} - ${BROWN}username${BLUE} on remote system which runs commands (if ommited, then ${YELLOW}\"${USER}\"${BLUE} is picked up)
     ${LIME}-R${BLUE}  ${WINE}[optional]${BLUE} - run code remotely on just created EC2 instance
     ${LIME}-A${BLUE}  ${WINE}[optional]${BLUE} - ${BROWN}AMI_ID${BLUE}         (if ommited, then ${YELLOW}the newest${BLUE} OWN is picked up)
-                     example: ${YELLOW}Red Hat Enterprise Linux 8 (HVM), SSD Volume Type (${CYAN}ami-032e5b6af8a711f30${YELLOW})${BLUE}
-                     example: ${YELLOW}Amazon Linux 2 AMI (HVM), SSD Volume Type (${CYAN}ami-0ce1e3f77cd41957e${YELLOW})${BLUE}
-                     example: ${YELLOW}CentOS 7 (x86_64) - with Updates HVM (${CYAN}ami-05a178e6f938f2c39${YELLOW})${BLUE}
+                     example: ${YELLOW}Red Hat Enterprise Linux 8 (HVM), SSD Volume Type (${CYAN}ami-032e5b6af8a711f30${YELLOW})${BLUE} - for ${YELLOW}eu-west-1${BLUE} AZ
+                     example: ${YELLOW}Amazon Linux 2 AMI (HVM), SSD Volume Type (${CYAN}ami-0ce1e3f77cd41957e${YELLOW})${BLUE} - for ${YELLOW}eu-west-1${BLUE} AZ
+                     example: ${YELLOW}CentOS 7 (x86_64) - with Updates HVM (${CYAN}ami-05a178e6f938f2c39${YELLOW})${BLUE} - for ${YELLOW}eu-west-1${BLUE} AZ
                      example of find: ${CYAN}\"aws --profile saml ec2 describe-images --filters \"Name=description,Values=CentOS 7*\" | jq '.Images[].Description'\"
     ${LIME}-I${BLUE}  ${WINE}[optional]${BLUE} - ${BROWN}INSTANCE_TYPE${BLUE}  (if ommited, then ${YELLOW}\"t3.xlarge\"${BLUE} is picked up)
     ${LIME}-o${BLUE}  ${BROWN}OUTPUT${BLUE} directory - where to store ALL LOGs and TEMP files
@@ -152,9 +152,14 @@ else
   AWS_PROFILE_USE_CHECK=(--profile ${AWS_PROFILE})
 fi
 
-if [ -z ${u} ]
+if [ -z ${u} ] && [ -z ${A} ]
 then
   DEPLOY_USER="jenkins"
+  u=${DEPLOY_USER}
+elif [ -z ${u} ] && [ ! -z ${A} ]
+then
+  #DEPLOY_USER="ec2-user"
+  DEPLOY_USER="cloud_user"
   u=${DEPLOY_USER}
 else
   DEPLOY_USER=${u}
@@ -178,10 +183,6 @@ aws_connectivity_check
 START_DEPLOY_TIME=$(date +%s.%4N)
 source "${SCRIPTS_HOME}/aws_collecting"
 wait
-if [[ ${AWS_OWNER_ID} == "442556267452" ]]
-then
-  SLACK_CHANNEL_AWS="D1KGVBCUF"
-fi
 
 inf ""
 aws_key_create
@@ -222,14 +223,17 @@ then
         aws_S3_bucket_lifecycle "${S3_BUCKET}"
       fi
     ) &
-    done
-  else
+  done
+else
+  for S3_BUCKET in ${AWS_S3_BUCKETS[*]}
+  do
     warn "  S3 bucket: ${YELLOW}${S3_BUCKET}${WINE} doesn't exist"
     aws_S3_bucket_create "${S3_BUCKET}"
     aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
     aws_S3_bucket_encryption "${S3_BUCKET}"
     aws_S3_bucket_lifecycle "${S3_BUCKET}"
-  fi
+  done
+fi
 #ToDo: KMS add a key to encrypt S3 buckets...
 #ToDo: add removing S3 buckets function
 wait

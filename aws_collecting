@@ -51,14 +51,13 @@ jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} 
 jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Roles[] | select(.Arn | contains("aws-service-role") | not) | select(.Arn | contains($aws_default_name) | not)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_NAMES_PREFIX}_full.json" 2>&1
 
 #separation of instance_profiles
-
 for AWS_IAM_ROLE in $(jq -r '.Roles[].RoleName' "${TMP}/${AWS_ROLES}_full.json" | grep "${AWS_NAMES_PREFIX}")
 do
   (
   jq -r --arg aws_iam_role "${AWS_IAM_ROLE}" '.Roles[] | select(.RoleName == $aws_iam_role)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE}_full.json" 2>&1
   ) &
 done
-
+jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name)) | .PolicyName' "${TMP}/${AWS_POLICIES}_full.json"
 for AWS_DEFAULT_POLICY in $(jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name)) | .PolicyName' "${TMP}/${AWS_POLICIES}_full.json")
 do
   (

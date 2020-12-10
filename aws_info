@@ -107,10 +107,6 @@ aws_connectivity_check
 
 source "${SCRIPTS_HOME}/aws_collecting"
 wait
-if [[ ${AWS_OWNER_ID} == "442556267452" ]]
-then
-  export SLACK_CHANNEL_AWS="D1KGVBCUF"
-fi
 
 if [[ ${CURRENT_DAY} == 01 ]] && [[ ${CURRENT_MONTH} == 01 ]]
 then
@@ -210,6 +206,7 @@ then
   for AWS_INSTANCE_ID in $(jq -r '.Reservations[].Instances[].InstanceId' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
   do
     AWS_INSTANCE_IP=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+    AWS_INSTANCE_PUBLIC_IP=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .PublicIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
     AWS_INSTANCE_LAUNCH=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .LaunchTime' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
     AWS_INSTANCE_LAUNCH_DATE=$(echo ${AWS_INSTANCE_LAUNCH} | awk -FT '{print $1}')
     AWS_INSTANCE_LAUNCH_TIME=$(echo ${AWS_INSTANCE_LAUNCH} | awk -FT '{print $2}' | awk -F\+ '{print $1}')
@@ -245,11 +242,19 @@ then
     if [[ ${AWS_INSTANCE_STATE} == "stopped" ]]
     then
       inf "    state: ${RED}${AWS_INSTANCE_STATE^^}"
-      inf "        IP: ${LIME}${AWS_INSTANCE_IP}"
+      inf "        Private IP: ${LIME}${AWS_INSTANCE_IP}"
+      if [ -z ${AWS_INSTANCE_PUBLIC_IP} ] || [[ ${AWS_INSTANCE_PUBLIC_IP} == "null" ]]
+      then
+        inf "        Public IP: ${GREEN}${AWS_INSTANCE_IP}"
+      fi
     elif [[ ${AWS_INSTANCE_STATE} == "running" ]]
     then
       inf "      state: ${GREEN}${AWS_INSTANCE_STATE^^}"
-      inf "        IP: ${LIME}${AWS_INSTANCE_IP}"
+      inf "        Private IP: ${LIME}${AWS_INSTANCE_IP}"
+      if [ -z ${AWS_INSTANCE_PUBLIC_IP} ] || [[ ${AWS_INSTANCE_PUBLIC_IP} == "null" ]]
+      then
+        inf "        Public IP: ${GREEN}${AWS_INSTANCE_IP}"
+      fi
     else
       inf "      state: ${WINE}${AWS_INSTANCE_STATE^^}"
     fi
@@ -617,7 +622,6 @@ then
         inf "    and it is not attached to any role"
         if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
         then
-          echo "AWS_IAM_POLICY_ARN=${AWS_IAM_POLICY_ARN}"
           aws_policy_removal "${AWS_IAM_POLICY_ARN}"
         fi
       else
@@ -726,20 +730,25 @@ fi
 
 #AWS costs:
 inf ""
-inf "${MAGENTA}Costs:"
-inf "  current month (${BROWN}${CURRENT_MONTH}${CYAN}): ${LIGHT_YELLOW}${CURRENT_MONTH_COSTS} USD"
-if [[ ${VERBOSE} == "yes" ]]
+if grep -q "AccessDeniedException" "${TMP}/${AWS_COSTS_DETAILS}_full.json"
 then
-  IFS=$'\n'
-  inf "    per services:"
-  for AWS_SERVICE_COST_LINE in $(jq -r '.ResultsByTime[].Groups[] | .Keys[] + "~" + .Metrics.NetAmortizedCost.Amount' "${TMP}/${AWS_COSTS_DETAILS}_current_month_full.json" | grep -v "~0.00" | grep -v "~0$")
-  do
-    AWS_SERVICE=$(echo ${AWS_SERVICE_COST_LINE} | awk -F\~ '{printf "%-40s", $1}')
-    AWS_SERVICE_COSTS=$(echo ${AWS_SERVICE_COST_LINE} | awk -F\~ '{print $2}')
-    debug "      ${MAGENTA}${AWS_SERVICE}${BLUE}- ${LIGHT_YELLOW}${AWS_SERVICE_COSTS} USD"
-  done
+  warn "${MAGENTA}Costs${WINE} are not available due to ${RED}AccessDeniedException"
+else
+  inf "${MAGENTA}Costs:"
+  inf "  current month (${BROWN}${CURRENT_MONTH}${CYAN}): ${LIGHT_YELLOW}${CURRENT_MONTH_COSTS} USD"
+  if [[ ${VERBOSE} == "yes" ]]
+  then
+    IFS=$'\n'
+    inf "    per services:"
+    for AWS_SERVICE_COST_LINE in $(jq -r '.ResultsByTime[].Groups[] | .Keys[] + "~" + .Metrics.NetAmortizedCost.Amount' "${TMP}/${AWS_COSTS_DETAILS}_current_month_full.json" | grep -v "~0.00" | grep -v "~0$")
+    do
+      AWS_SERVICE=$(echo ${AWS_SERVICE_COST_LINE} | awk -F\~ '{printf "%-40s", $1}')
+      AWS_SERVICE_COSTS=$(echo ${AWS_SERVICE_COST_LINE} | awk -F\~ '{print $2}')
+      debug "      ${MAGENTA}${AWS_SERVICE}${BLUE}- ${LIGHT_YELLOW}${AWS_SERVICE_COSTS} USD"
+    done
+  fi
+  inf "  current year (${BROWN}${CURRENT_YEAR}${CYAN}): ${LIGHT_YELLOW}${CURRENT_YEAR_COSTS} USD"
 fi
-inf "  current year (${BROWN}${CURRENT_YEAR}${CYAN}): ${LIGHT_YELLOW}${CURRENT_YEAR_COSTS} USD"
 #AWS costs:
 
 #Slack notifications

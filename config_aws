@@ -1288,7 +1288,7 @@ associating_instance-to-profile()
     EC2_INSTANCE_ID=${1}
     EC2_INSTANCE_PROFILE_NAME="${2}"
   fi
-  inf "Checking for proper status of an instance: ${YELLOW}${EC2_INSTANCE_ID}${CYAN} (running)"
+  inf "Associating EC2 instance: ${YELLOW}${EC2_INSTANCE_ID}${CYAN} to instance profile: ${LIME}${EC2_INSTANCE_PROFILE_NAME}"
   while [[ ! $(aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-instance-status --instance-ids ${EC2_INSTANCE_ID} | jq -r '.InstanceStatuses[].InstanceState.Name') == "running" ]]
   do
     for NUMBER in {1..40}
@@ -1298,7 +1298,6 @@ associating_instance-to-profile()
     done
     printf '\n'
   done
-  inf "Associating EC2 instance: ${YELLOW}${EC2_INSTANCE_ID}${CYAN} to instance profile: ${LIME}${EC2_INSTANCE_PROFILE_NAME}"
   aws ${AWS_PROFILE_USE_CHECK[*]} ec2 associate-iam-instance-profile --instance-id ${EC2_INSTANCE_ID} --iam-instance-profile Name="${EC2_INSTANCE_PROFILE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${EC2_INSTANCE_ID}_profile_association.json" 2>&1
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]

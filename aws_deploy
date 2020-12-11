@@ -41,7 +41,7 @@ $0 -L/-E -p PROFILE_NAME  [-u REMOTE_USERNAME] [-R] [-A AMI_ID] [-I INSTANCE_TYP
         ${LIME}▷${CYAN} instance profile - with that role, to which created instance will be attached
         ${LIME}▷${CYAN} security group - tighten to local/external IP to log in by ssh from
         ${LIME}▷${CYAN} KeyPair to log in to created instance
-        ${LIME}▷${CYAN} S3 buckets for reports, security matrix etc with policy, access by ssl enabled, and lifecycle (ToDo)
+        ${LIME}▷${CYAN} S3 buckets for reports, security matrix etc with policy, access by ssl enabled, and lifecycle
         ${LIME}▷${CYAN} run code remotely with remote logs sent to console
       ${LIME}▷ ${YELLOW}Lambda function + EventBridge schedule${CYAN}${BLUE}
         ${LIME}▷${CYAN} Lambda policy to access AWS logs for debug
@@ -50,7 +50,7 @@ $0 -L/-E -p PROFILE_NAME  [-u REMOTE_USERNAME] [-R] [-A AMI_ID] [-I INSTANCE_TYP
         ${LIME}▷${CYAN} instance profile - with that role, to which created instance will be attached
         ${LIME}▷${CYAN} security group - tighten to all addresses defined by:  ${BROWN}SOURCE_NETWORKS${CYAN} variable
         ${LIME}▷${CYAN} KeyPair to log in to created instance
-        ${LIME}▷${CYAN} S3 buckets for reports, security matrix etc with policy, access by ssl enabled, and lifecycle (ToDo)
+        ${LIME}▷${CYAN} S3 buckets for reports, security matrix etc with policy, access by ssl enabled, and lifecycle
 
     ${LIME}-E${BLUE}  deployment of EC2 instance
     ${LIME}-L${BLUE}  deployment of Lambda function with EventBridge schedule

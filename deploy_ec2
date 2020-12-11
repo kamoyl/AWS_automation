@@ -32,8 +32,6 @@ do
   done
   printf '\n'
   ERROR_CODE="$?"
-  debug "ERROR_CODE=${ERROR_CODE}"
-  debug "CREATE_INSTANCE_PID=${CREATE_INSTANCE_PID}"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "  Instance cannot be created, exiting"

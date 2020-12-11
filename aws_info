@@ -547,21 +547,23 @@ then
         inf "    Event rule: ${LIME}${EVENT_RULE_NAME}${CYAN}, of this bus: ${DARK_GREEN}${EVENT_BUS_NAME}${CYAN}, scheduled on: ${BROWN}\"${EVENT_RULE_SCHEDULE}\""
         if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" ] && [ ! -z $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" | head -n1) ]
         then
-          for EVENT_TARGET_ARN in $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json")
+          for EVENT_TARGET_ARN in $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" | sort -u)
           do
-            EVENT_TARGET_ID=$(jq -r --arg event_target_arn ${EVENT_TARGET_ARN} '.Targets[] | select(.Arn == $event_target_arn) | .Id' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json")
-            inf "      to target Arn: ${GREEN}${EVENT_TARGET_ARN}"
-            if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
-            then
-              events_remove_target ${EVENT_TARGET_ID} ${EVENT_RULE_NAME}
-            fi
+            for EVENT_TARGET_ID in $(jq -r --arg event_target_arn ${EVENT_TARGET_ARN} '.Targets[] | select(.Arn == $event_target_arn) | .Id' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json")
+            do
+              inf "      to target Arn: ${GREEN}${EVENT_TARGET_ARN}"
+              if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
+              then
+                event_bridge_remove_target ${EVENT_TARGET_ID} ${EVENT_RULE_NAME}
+              fi
+            done
           done
         else
           warn "      There is no EventTargets related to rule: ${LIME}${EVENT_RULE_NAME}"
         fi
         if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
         then
-          events_remove_rule ${EVENT_RULE_NAME}
+          event_bridge_remove_rule ${EVENT_RULE_NAME}
         fi
       done
     else
@@ -697,7 +699,7 @@ then
       if [[ ${CLEANING} == yes ]]
       then
         inf "    removing log group: ${BROWN}${AWS_LOG_NAME}"
-        aws logs delete-log-group --log-group-name ${AWS_LOG_NAME}
+        aws ${AWS_PROFILE_USE_CHECK[*]} logs delete-log-group --log-group-name ${AWS_LOG_NAME}
       fi
     done
   fi

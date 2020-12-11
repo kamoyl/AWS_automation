@@ -192,10 +192,12 @@ aws_default_subnet()
 {
   if [ -s "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" ]
   then
-    if [ ! -z $(jq -r '.Subnets[] | .Tags[].Value' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" | head -n1) ]
+    if [ ! -z $(jq -r '.Subnets[] | .Tags[].Value' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" 2>/dev/null | head -n1) ]
     then
+      debug "  taking subnet based on TAGs"
       SUBNET_ID=$(shuf -e $(jq -r '.Subnets[] | .SubnetId + "~"  + .Tags[].Value' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" | grep ${AWS_NETWORK_TAG} | awk -F\~ '{print $1}') | tail -n1)
     else
+      debug "  taking randomly ANY subnet"
       SUBNET_ID=$(shuf -e $(jq -r '.Subnets[] | .SubnetId' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json") | tail -n1)
     fi
     AVAILABILITY_ZONE=$(jq -r --arg subnet_id ${SUBNET_ID} '.Subnets[] | select(.SubnetId == $subnet_id) | .AvailabilityZone' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json")
@@ -602,7 +604,6 @@ aws_vol_removal()
   else
     AWS_VOLUME_ID="${1}"
   fi
-  #ToDo:  if volume was already removed ?
   aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-volumes --volume-ids ${AWS_VOLUME_ID} > "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json" 2>&1 
   DELETE_ON_TERMINATION=$(jq -r '.Volumes[].Attachments[].DeleteOnTermination' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
   AWS_VOLUME_INSTANCE_ID=$(jq -r '.Volumes[].Attachments[].InstanceId' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
@@ -1287,6 +1288,16 @@ associating_instance-to-profile()
     EC2_INSTANCE_ID=${1}
     EC2_INSTANCE_PROFILE_NAME="${2}"
   fi
+  inf "Checking for proper status of an instance: ${YELLOW}${EC2_INSTANCE_ID}${CYAN} (running)"
+  while [[ ! $(aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-instance-status --instance-ids ${EC2_INSTANCE_ID} | jq -r '.InstanceStatuses[].InstanceState.Name') == "running" ]]
+  do
+    for NUMBER in {1..40}
+    do
+      sleep 0.1
+      ProgressBar ${NUMBER} 40
+    done
+    printf '\n'
+  done
   inf "Associating EC2 instance: ${YELLOW}${EC2_INSTANCE_ID}${CYAN} to instance profile: ${LIME}${EC2_INSTANCE_PROFILE_NAME}"
   aws ${AWS_PROFILE_USE_CHECK[*]} ec2 associate-iam-instance-profile --instance-id ${EC2_INSTANCE_ID} --iam-instance-profile Name="${EC2_INSTANCE_PROFILE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${EC2_INSTANCE_ID}_profile_association.json" 2>&1
   ERROR_CODE="$?"
@@ -1537,7 +1548,7 @@ aws_security_group_ingress_add()
   fi
 }
 
-events_remove_target()
+event_bridge_remove_target()
 {
   if [ $# -ne 2 ]
   then
@@ -1545,45 +1556,107 @@ events_remove_target()
     ERROR_CODE="1"
     failed
   else
-    EVENT_TARGET_ID="${1}"
-    EVENT_TARGET_NAME=$(echo "${EVENT_TARGET_ID}" | awk -F\: '{print $NF}')
-    EVENT_RULE_NAME="${2}"
+    EVENT_BRIDGE_TARGET_ID="${1}"
+    EVENT_BRIDGE_RULE_NAME="${2}"
   fi
-  inf "      Target: ${GREEN}${EVENT_TARGET_ID}${CYAN} will be removed from rule:  ${LIME}${EVENT_RULE_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} events remove-targets --rule ${EVENT_RULE} --ids ${EVENT_TARGET_ID} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_TARGET_NAME}_target_full.json" 2>&1
+  inf "      Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} will be removed from rule:  ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  aws ${AWS_PROFILE_USE_CHECK[*]} events remove-targets --rule ${EVENT_BRIDGE_RULE_NAME} --ids ${EVENT_BRIDGE_TARGET_ID} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target_removal_full.json" 2>&1
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
-    inf "        Target: ${GREEN}${EVENT_TARGET_ID}${CYAN} removed properly"
+    inf "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} removed properly"
   else
-    error "        Target: ${GREEN}${EVENT_TARGET_ID}${RED} wasn't removed properly"
-    debug "          LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_TARGET_NAME}_target_full.json"
+    error "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't removed properly"
+    debug "          LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target_removal_full.json"
     failed
   fi
 }
 
-events_remove_rule()
+event_bridge_remove_rule()
 {
   if [ $# -ne 1 ]
   then
-    error "Function ${LIME}${FUNCNAME[0]}${RED} needs two parameter: ${YELLOW}(1)event_rule_name"
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs two parameter: ${YELLOW}(1)event_bridge_rule_name"
     ERROR_CODE="1"
     failed
   else
-    EVENT_RULE_NAME="${1}"
+    EVENT_BRIDGE_RULE_NAME="${1}"
   fi
-  inf "      Removing rule: ${LIME}${EVENT_RULE_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} events delete-rule --name ${EVENT_RULE_NAME} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE_NAME}_full.json" 2>&1
+  inf "      Removing rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  aws ${AWS_PROFILE_USE_CHECK[*]} events delete-rule --name ${EVENT_BRIDGE_RULE_NAME} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_removal_full.json" 2>&1
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
-    inf "        Rule: ${LIME}${EVENT_RULE_NAME}${CYAN} removed properly"
+    inf "        Rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} removed properly"
   else
-    error "        Rule: ${LIME}${EVENT_RULE_NAME}${RED} wasn't removed properly"
-    debug "          LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE_NAME}_full.json"
+    error "        Rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${RED} wasn't removed properly"
+    debug "          LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_removal_full.json"
     failed
   fi
 }
+
+events_create_cron_rule()
+{
+  if [ $# -ne 2 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs two parameter: ${YELLOW}(1)event_rule_name, (2)cron_event_schedule"
+    ERROR_CODE="1"
+    failed
+  else
+    EVENT_BRIDGE_RULE_NAME="${1}"
+    EVENT_BRIDGE_RULE_NAME_CRON="${2}"
+  fi
+  inf "    Adding event rule:  ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} with cron: ${BROWN}\"${EVENT_BRIDGE_RULE_NAME_CRON}\""
+  EVENT_BRIDGE_RULE_NAME_CHECK=$(jq -r --arg event_bridge_rule_name ${EVENT_BRIDGE_RULE_NAME} '.Rules[] | select(.Name == $event_bridge_rule_name) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+  if [ -z ${EVENT_BRIDGE_RULE_NAME_CHECK} ]
+  then
+    aws ${AWS_PROFILE_USE_CHECK[*]} events put-rule --schedule-expression "cron${EVENT_BRIDGE_RULE_NAME_CRON}" --name ${EVENT_BRIDGE_RULE_NAME} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json" 2>&1
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      inf "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} added properly"
+    else
+      error "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${RED} failed to add"
+      debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json"
+      failed
+    fi
+  else
+    inf "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} already existed"
+  fi
+}
+
+#aws ${AWS_PROFILE_USE_CHECK[*]} events create-event-bus --name ${AWS_COMMON_NAME}-EC2_scripts_deployment_bus > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_BUS}_full.json" 2>&1
+
+events_add_target_to_rule()
+{
+  if [ $# -ne 2 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs two parameter: ${YELLOW}(1)event_target_Id, (2)event_rule_name"
+    ERROR_CODE="1"
+    failed
+  else
+    EVENT_BRIDGE_TARGET_ID=${1}
+    EVENT_BRIDGE_RULE_NAME=${2}
+  fi
+  inf "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} will be added to rule:  ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  EVENT_BRIDGE_TARGET_ARN_CHECK=$(aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --rule ${EVENT_BRIDGE_RULE_NAME} | jq -r --arg arn ${EC2_LAMBDA_SCRIPT_ARN} '.Targets[] | select(.Arn == $arn) .Arn' | head -n1)
+  if [ -z ${EVENT_BRIDGE_TARGET_ARN_CHECK} ]
+  then
+    aws ${AWS_PROFILE_USE_CHECK[*]} events put-targets --rule ${EVENT_BRIDGE_RULE_NAME} --targets ${EVENT_BRIDGE_TARGET_ID} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      inf "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} added properly"
+    else
+      error "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't added"
+      debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"
+      failed
+    fi
+  else
+    inf "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} is already added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  fi
+}
+
 aws_run_EC2_code()
 {
   if [ $# -ne 4 ]

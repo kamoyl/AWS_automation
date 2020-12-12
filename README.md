@@ -7,6 +7,7 @@ It works both: in hybrid clouds, and in public one either (I tested it against [
 
 Scripts takes care for permissions, relations (to entities) and support error handling; the funniest is that from the scripts and CLI you may collect much more information then AWS console...
 
+
 Which also means, and it is nice advere effect, that running just info - it collects all information about current env of an AccountAD - with all extra created policies, roles, or other entities, and lots more that that - the most interested it is when run aws_info script against just created CloudGuru sandbox :)
 
 ## prerequisites:

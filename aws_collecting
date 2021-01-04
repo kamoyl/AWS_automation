@@ -16,46 +16,46 @@ fi
 #start collecting all needed data
 
 START_AWS_COLLECTINGDATA_TIME=$(date +%s.%4N)
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-key-pairs                               > "${TMP}/${AWS_EC2_KEYPAIRS}_full.json"        2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-instances                               > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json"   2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-volumes                                 > "${TMP}/${AWS_VOLS_DETAILS}_full.json"        2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-subnets                                 > "${TMP}/${AWS_SUBNETS_DETAILS}_full.json"     2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-snapshots --owner-ids "${AWS_OWNER_ID}" > "${TMP}/${AWS_SNAPS_DETAILS}_full.json"       2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-images    --owners "${AWS_OWNER_ID}"    > "${TMP}/${AWS_AMIS_DETAILS}_full.json"        2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-security-groups                         > "${TMP}/${AWS_SECURITY_GROUPS}_full.json"     2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-iam-instance-profile-associations       > "${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_full.json"  2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-vpcs                                    > "${TMP}/${AWS_VPCS}_full.json"                2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-internet-gateways                       > "${TMP}/${AWS_IGWS}_full.json"                2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-route-tables                            > "${TMP}/${AWS_ROUTE_TBLS}_full.json"          2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} lambda          list-functions                                   > "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json"    2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} iam             list-roles                                       > "${TMP}/${AWS_ROLES}_full.json"               2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} iam             list-policies                                    > "${TMP}/${AWS_POLICIES}_full.json"            2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} iam             list-instance-profiles                           > "${TMP}/${AWS_INSTANCE_PROFILES}_full.json"   2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ce              get-cost-and-usage --time-period "Start=${CURRENT_YEAR}-${CURRENT_MONTH}-01,End=${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY}" --granularity MONTHLY --metrics "NetAmortizedCost" --group-by Type=DIMENSION,Key=SERVICE > "${TMP}/${AWS_COSTS_DETAILS}_current_month_full.json"  2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} ce              get-cost-and-usage --time-period "Start=${CURRENT_YEAR}-01-01,End=${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY}" --granularity=MONTHLY --metrics "NetAmortizedCost" > "${TMP}/${AWS_COSTS_DETAILS}_full.json"  2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} s3              ls                                               > "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output" 2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} logs            describe-log-groups --log-group-name-prefix "/aws/lambda/${AWS_COMMON_NAME}" > "${TMP}/${AWS_LOGS}_full.json"   2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} configservice   describe-compliance-by-config-rule               > "${TMP}/${AWS_COMPLIANCE}_full.json"          2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} cloudtrail      describe-trails                                  > "${TMP}/${AWS_TRAILS}_full.json"              2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} events          list-event-buses                                 > "${TMP}/${AWS_EVENTS_BUSES}_full.json"        2>&1 &
-aws ${AWS_PROFILE_USE_CHECK[*]} events          list-rules                                       > "${TMP}/${AWS_EVENTS_RULES}_full.json"        2>&1 &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-key-pairs                               > "${TMP}/${AWS_EC2_KEYPAIRS}_full.json"        2>"${LOG}/${AWS_EC2_KEYPAIRS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-instances                               > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json"   2>"${LOG}/${AWS_INSTANCES_DETAILS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-volumes                                 > "${TMP}/${AWS_VOLS_DETAILS}_full.json"        2>"${LOG}/${AWS_VOLS_DETAILS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-subnets                                 > "${TMP}/${AWS_SUBNETS_DETAILS}_full.json"     2>"${LOG}/${AWS_SUBNETS_DETAILS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-snapshots --owner-ids "${AWS_OWNER_ID}" > "${TMP}/${AWS_SNAPS_DETAILS}_full.json"       2>"${LOG}/${AWS_SNAPS_DETAILS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-images    --owners "${AWS_OWNER_ID}"    > "${TMP}/${AWS_AMIS_DETAILS}_full.json"        2>"${LOG}/${AWS_AMIS_DETAILS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-security-groups                         > "${TMP}/${AWS_SECURITY_GROUPS}_full.json"     2>"${LOG}/${AWS_SECURITY_GROUPS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-iam-instance-profile-associations       > "${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_full.json"  2>"${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-vpcs                                    > "${TMP}/${AWS_VPCS}_full.json"                2>"${LOG}/${AWS_VPCS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-internet-gateways                       > "${TMP}/${AWS_IGWS}_full.json"                2>"${LOG}/${AWS_IGWS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-route-tables                            > "${TMP}/${AWS_ROUTE_TBLS}_full.json"          2>"${LOG}/${AWS_ROUTE_TBLS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} lambda          list-functions                                   > "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json"    2>"${LOG}/${AWS_LAMBDA_FUNCTIONS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} iam             list-roles                                       > "${TMP}/${AWS_ROLES}_full.json"               2>"${LOG}/${AWS_ROLES}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} iam             list-policies                                    > "${TMP}/${AWS_POLICIES}_full.json"            2>"${LOG}/${AWS_POLICIES}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} iam             list-instance-profiles                           > "${TMP}/${AWS_INSTANCE_PROFILES}_full.json"   2>"${LOG}/${AWS_INSTANCE_PROFILES}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ce              get-cost-and-usage --time-period "Start=${CURRENT_YEAR}-${CURRENT_MONTH}-01,End=${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY}" --granularity MONTHLY --metrics "NetAmortizedCost" --group-by Type=DIMENSION,Key=SERVICE > "${TMP}/${AWS_COSTS_DETAILS}_current_month_full.json"  2>"${LOG}/${AWS_COSTS_DETAILS}_current_month.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ce              get-cost-and-usage --time-period "Start=${CURRENT_YEAR}-01-01,End=${CURRENT_YEAR}-${CURRENT_MONTH}-${CURRENT_DAY}" --granularity=MONTHLY --metrics "NetAmortizedCost" > "${TMP}/${AWS_COSTS_DETAILS}_full.json"  2>"${LOG}/${AWS_COSTS_DETAILS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} s3              ls                                               > "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output" 2>"${LOG}/${AWS_S3BUCKETS_DETAILS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} logs            describe-log-groups --log-group-name-prefix "/aws/lambda/${AWS_COMMON_NAME}" > "${TMP}/${AWS_LOGS}_full.json"   2>"${LOG}/${AWS_LOGS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} configservice   describe-compliance-by-config-rule               > "${TMP}/${AWS_COMPLIANCE}_full.json"          2>"${LOG}/${AWS_COMPLIANCE}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} cloudtrail      describe-trails                                  > "${TMP}/${AWS_TRAILS}_full.json"              2>"${LOG}/${AWS_TRAILS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} events          list-event-buses                                 > "${TMP}/${AWS_EVENTS_BUSES}_full.json"        2>"${LOG}/${AWS_EVENTS_BUSES}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} events          list-rules                                       > "${TMP}/${AWS_EVENTS_RULES}_full.json"        2>"${LOG}/${AWS_EVENTS_RULES}.log" &
 wait
 END_AWS_COLLECTINGDATA_TIME=$(date +%s.%4N)
 DEFAULT_VPC=$(jq -r '.Vpcs[].VpcId' "${TMP}/${AWS_VPCS}_full.json")
 
 #start separating data
 #separation of policies
-jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name) | not)' "${TMP}/${AWS_POLICIES}_full.json" > "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json"  2>&1
+jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name) | not)' "${TMP}/${AWS_POLICIES}_full.json" > "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}.log"
 
 #separation of roles
-jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Roles[] | select(.Arn | contains("aws-service-role") | not) | select(.Arn | contains($aws_default_name) | not)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_NAMES_PREFIX}_full.json" 2>&1
+jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Roles[] | select(.Arn | contains("aws-service-role") | not) | select(.Arn | contains($aws_default_name) | not)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_NAMES_PREFIX}_full.json" 2>"${LOG}/${AWS_ROLES}_${AWS_NAMES_PREFIX}.log"
 
 #separation of instance_profiles
 
 for AWS_IAM_ROLE in $(jq -r '.Roles[].RoleName' "${TMP}/${AWS_ROLES}_full.json" | grep "${AWS_NAMES_PREFIX}")
 do
   (
-  jq -r --arg aws_iam_role "${AWS_IAM_ROLE}" '.Roles[] | select(.RoleName == $aws_iam_role)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE}_full.json" 2>&1
+  jq -r --arg aws_iam_role "${AWS_IAM_ROLE}" '.Roles[] | select(.RoleName == $aws_iam_role)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE}_full.json" 2>"${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE}.log"
   ) &
 done
 
@@ -64,10 +64,10 @@ then
   for AWS_DEFAULT_POLICY in $(jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name)) | .PolicyName' "${TMP}/${AWS_POLICIES}_full.json")
   do
     (
-    jq -r --arg default_policy ${AWS_DEFAULT_POLICY} '.Policies[] | select(.PolicyName == $default_policy)' "${TMP}/${AWS_POLICIES}_full.json" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json"  2>&1
+    jq -r --arg default_policy ${AWS_DEFAULT_POLICY} '.Policies[] | select(.PolicyName == $default_policy)' "${TMP}/${AWS_POLICIES}_full.json" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}.log"
     AWS_DEFAULT_POLICY_VERSION=$(jq -r '.DefaultVersionId' "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json")
     AWS_DEFAULT_POLICY_ARN=$(jq -r '.Arn' "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json")
-    aws ${AWS_PROFILE_USE_CHECK[*]} iam get-policy-version  ${AWS_PROFILE_USE_CHECK[*]} --policy-arn "${AWS_DEFAULT_POLICY_ARN}" --version-id "${AWS_DEFAULT_POLICY_VERSION}" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_def_full.json"  2>&1
+    aws ${AWS_PROFILE_USE_CHECK[*]} iam get-policy-version  ${AWS_PROFILE_USE_CHECK[*]} --policy-arn "${AWS_DEFAULT_POLICY_ARN}" --version-id "${AWS_DEFAULT_POLICY_VERSION}" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_def_full.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_def.log"
     ) &
   done
 fi

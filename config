@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+ORIGIFS=${IFS}
+#debug "IFS=$(cat -etv <<<"$IFS")"
+
 export TERM="xterm-256color"
 BLACK=$(tput setaf 0)
 RED=$(tput setaf 1)
@@ -240,8 +243,11 @@ fi
 debug "Checking if aws cli exists, and if version is appropriate"
 if ! type aws > /dev/null 2>&1
 then
-  error "There is no \"aws\" command, exiting"
-  failed
+  if [[ $0 == "aws_deploy" ]] || [[ $0 == "aws_info" ]]
+  then
+    error "There is no \"aws\" command, exiting"
+    failed
+  fi
 else
   AWS_CLI_VERSION=$(aws --version | awk '{print $1}' | awk -F\/ '{print $2}' | awk -F\. '{print $1}')
   if [ ${AWS_CLI_VERSION} -eq 1 ]
@@ -265,8 +271,6 @@ then
   LOCAL_IP=${DEFAULT_INET_IP}
 fi
 
-EXTERNAL_INET_IP=$(timeout --preserve-status -s 9 -k 3 2 curl ${SLACK_PROXY_CONTROL} -s https://ipinfo.io/ip 2>/dev/null)
-
 export LDAPTLS_REQCERT=never
 
 if [ ! -z ${VIRTUALBOX_IP} ]
@@ -278,10 +282,6 @@ then
 elif [ ! -z ${LOCAL_IP} ]
 then
   debug "You are currently connected from some local IP: ${LIME}${LOCAL_IP}"
-  if [ ! -z ${EXTERNAL_INET_IP} ]
-  then
-    debug "  And your external IP is: ${LIME}${EXTERNAL_INET_IP}"
-  fi
   export YOUR_IP="${LOCAL_IP}"
   YOUR_NETWORK="local IP"
   PROXYS=""
@@ -291,7 +291,14 @@ if [ -z ${PROXYS} ]
 then
   SLACK_PROXY_CONTROL=""
 else
-  SLACK_PROXY_CONTROL="-x ${PROXYS}"
+  SLACK_PROXY_CONTROL=(-x ${PROXYS})
+fi
+
+EXTERNAL_INET_IP=$(timeout --preserve-status -s 9 -k 3 2 curl ${SLACK_PROXY_CONTROL[*]} -s https://ipinfo.io/ip 2>/dev/null)
+
+if [ ! -z ${EXTERNAL_INET_IP} ]
+then
+  debug "  And your external IP is: ${LIME}${EXTERNAL_INET_IP}"
 fi
 
 if [ -s "${SCRIPTS_HOME}/config_secrets" ]

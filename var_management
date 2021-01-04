@@ -7,10 +7,18 @@ fi
 
 if [ -z ${o} ]
 then
-  export VAR="${HOME}/var"
-  mkdir -p ${VAR}
+  if [ -z ${TERADATA_VAR} ]
+  then
+    export VAR="${HOME}/var"
+    mkdir -p ${VAR}
+    export TERADATA_VAR=${VAR}
+  else
+    export VAR=${TERADATA_VAR}
+    mkdir -p ${VAR}
+  fi
 else
   export VAR=$(readlink -f ${o})
+  export TERADATA_VAR=${VAR}
   mkdir -p ${VAR} > /dev/null 2>&1
   if [ $? -ne 0 ]
   then
@@ -22,11 +30,21 @@ fi
 if [ -z ${TMP} ]
 then
   export TMP="${VAR}/tmp-${SCRIPT_NAME}_${CURRENT_TIMESTAMP}"
+  export TDDDL_TMP=${TMP}
   mkdir -p ${TMP}
+  if [ -z ${TERADATA_TMP} ]
+  then
+    export TERADATA_TMP=${TMP}
+  fi
 fi
 
 if [ -z ${LOG} ]
 then
   export LOG="${VAR}/log-${SCRIPT_NAME}_${CURRENT_TIMESTAMP}"
-  mkdir -p ${LOG}
+  export TDDDL_LOG=${LOG}
+  mkdir -p ${LOG}/TPT/checkpoint
+  if [ -z ${TERADATA_LOG} ]
+  then
+    export TERADATA_LOG=${LOG}
+  fi
 fi

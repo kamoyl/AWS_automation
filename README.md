@@ -3,6 +3,13 @@ AWS EC2, S3 and some other (lambda, SNS, CloudWatch, CloudTrail etc) automation 
 
 Because it is a cloud environemnt and some things takes time (deployment of instance, instance being actually up, creating snapshot or image) - all commands are checking if resource is already available.
 
+It works both: in hybrid clouds, and in public one either (I tested it against [CloudGuru sandboxes](https://learn.acloud.guru/cloud-playground/cloud-sandboxes) and it works fine (despite some restriction which is described on CloudGuru site).
+
+Scripts takes care for permissions, relations (to entities) and support error handling; the funniest is that from the scripts and CLI you may collect much more information then AWS console...
+
+
+Which also means, and it is nice advere effect, that running just info - it collects all information about current env of an AccountAD - with all extra created policies, roles, or other entities, and lots more that that - the most interested it is when run aws_info script against just created CloudGuru sandbox :)
+
 ## prerequisites:
 - some more-or-less obvious tools: ip, ifconfig, bc, and [grepcidr](http://www.pc-tools.net/unix/grepcidr/)
 - already created VPC, IGW and subnet (usually defined by default, tested on newly created free tier account) - there is an assumptions they exist
@@ -85,6 +92,45 @@ And also:
 ### other
 - *[slack emoji](https://www.webfx.com/tools/emoji-cheat-sheet)*
 - *[markdown guide](https://www.markdownguide.org/basic-syntax)*
+
+* __Small notification change__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 11 Dec 2020 16:15:20 +0100
+    
+    
+
+* __* corrected issue with inapropriately checking subnets without tags__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 11 Dec 2020 16:14:18 +0100
+    
+    * due to TIME needed to initiate an instance, and then assigning profile - I
+    had to add a progress bar UNTIL instance will be running
+    
+
+* __few correction and few checkes to do smoothly through__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 10 Dec 2020 21:37:36 +0100
+    
+    
+
+* __Lots of changes__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 10 Dec 2020 17:08:50 +0100
+    
+    * checking if permissions are in place, if not - some tasks cannot be finished
+    but error must be handled
+    
+    * some tasks is not possible to do, errror handling added
+    
+    * in some cases there are unremovable relation to entities - which cannot - due
+    to permissions - be removed - error handling
+    
+
+* __Changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 16:50:57 +0100
+    
+    
 
 * __* all scripts are prepared now to be run outside AWS instance, and from it either - it means that cleaning is safe (current instance will be untouched, so as policied, secure groups, etc), profile is taken properly frmo inside EC2 instance and from autiside__
 

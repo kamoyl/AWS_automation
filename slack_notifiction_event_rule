@@ -1,0 +1,35 @@
+#!/usr/bin/env bash  
+
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}')${YELLOW} ]"
+fi
+
+IFS=${ORIGIFS}
+
+SLACK_HEADER="
+{\\\"channel\\\": \\\"${SLACK_CHANNEL_AWS}\\\"
+  , \\\"username\\\": \\\"${USER}, (${YOUR_IP})\\\"
+  , \\\"icon_emoji\\\": \\\":watch:\\\"
+  , \\\"attachments\\\":
+    [
+      {
+        \\\"fallback\\\": \\\"AWS EC2 instances and status, run from ${DEFAULT_INET_IP}, FQDN: ${HOSTNAME_FQDN}, costs: ${CURRENT_MONTH_COSTS}\\\",
+        \\\"color\\\": \\\"danger\\\",
+        \\\"title\\\": \\\"AWS (ID: ${AWS_OWNER_ID}) - monthly costs: ${CURRENT_MONTH_COSTS}\$\\\",
+        \\\"title_link\\\": \\\"${AWS_LOGIN_URL}\\\",
+        \\\"text\\\": \\\"*AWS ${AWS_COMMON_NAME} EC2 details*:
+                   \\\",
+        \\\"fields\\\":
+            ["
+SLACK_FOOTER="
+            ],
+        \\\"footer\\\": \\\"<${AWS_LOGIN_URL}|AWS log in:>\\\",
+        \\\"footer_icon\\\": \\\"https://github.com/quintessence/slack-icons/blob/master/images/amazon-web-services-slack-icon.png\\\"
+      }
+    ]
+, \\\"token\\\": \\\"${SLACK_TOKEN}\\\"
+}" 
+
+echo "curl ${SLACK_PROXY_CONTROL[*]} -v -X POST --data \"${SLACK_HEADER}${SLACK_INSTANCES}${SLACK_VOLS}${SLACK_AMIS}${SLACK_FOOTER}\" ${SLACK_WEB_HOOK}" > "${TMP}/${AWS_INSTANCES_DETAILS}_slack.in"
+source "${TMP}/${AWS_INSTANCES_DETAILS}_slack.in" > "${LOG}/${AWS_INSTANCES_DETAILS}_slack.log" 2>&1

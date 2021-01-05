@@ -93,7 +93,7 @@ if [ -s "${TMP}/${AWS_ROLES}_${AWS_EC2_LAMBDA_ROLE}_creation.json" ]
 then
   export EC2_LAMBDA_ROLE_ARN=$(jq -r '.Role.Arn' "${TMP}/${AWS_ROLES}_${AWS_EC2_LAMBDA_ROLE}_creation.json")
 fi
-AWS_LAMBDA_SCRIPT_NAMES=($(awk -F\~ '{print $1}' "${SCRIPTS_HOME}/lambda_functions/lambda_events.config"))
+AWS_LAMBDA_SCRIPT_NAMES=($(awk -F\~ '{print $1}' "${SCRIPTS_HOME}/lambda_functions/lambda_events.config" | grep -v "^#"))
 for LAMBDA_SCRIPT in ${AWS_LAMBDA_SCRIPT_NAMES[*]}
 do
   AWS_LAMBDA_NAME="${AWS_COMMON_NAME}_$(echo ${LAMBDA_SCRIPT} | awk -F\. '{print $1}')_lambda"
@@ -110,7 +110,7 @@ do
   export SECURITY_GROUP_ID
   lambda_function_deployment ${AWS_LAMBDA_NAME} ${AWS_HANDLER_FUNCTION_NAME} 
   IFS=$'\n'
-  for EVENT_SCHEDULE in $(grep ${LAMBDA_SCRIPT} "${SCRIPTS_HOME}/lambda_functions/lambda_events.config" | awk -F\~ '{print $2}')
+  for EVENT_SCHEDULE in $(grep ^${LAMBDA_SCRIPT} "${SCRIPTS_HOME}/lambda_functions/lambda_events.config" | awk -F\~ '{print $2}')
   do
     #EVENT_BRIDGE_RULE="${AWS_LAMBDA_NAME}_rule"
     EVENT_BRIDGE_RULE="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_rule"
@@ -122,7 +122,7 @@ do
 
   if [[ ${RUN_SCRIPT} == yes ]]
   then
-    inf "  Invoking lambda function ${YELLOW}${AWS_LAMBDA_NAME}${RED} (when event bridge will be configured properly this will be removed)"
+    inf "  Invoking Lambda function ${YELLOW}${AWS_LAMBDA_NAME}${RED} (when event bridge will be configured properly this will be removed)"
     #logs from CloudWatch
     #aws ${AWS_PROFILE_USE_CHECK[*]} logs get-log-events --log-group-name /aws/lambda/${AWS_LAMBDA_NAME} --log-stream-name $(cat out) --limit 5
     aws ${AWS_PROFILE_USE_CHECK[*]} lambda invoke --function-name ${AWS_LAMBDA_NAME} "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" --log-type Tail --query 'LogResult' --output text |  base64 -d > "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log" 2>&1

@@ -822,8 +822,7 @@ lambda_function_deployment()
     AWS_LAMBDA_FUNCTION_NAME="${1}"
     AWS_LAMBDA_HANDLER_NAME="${2}"
   fi
-  #ToDo: notification to slack when properlydeploy lambda
-  inf "Preparing lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+  inf "Preparing Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
   cat "${SCRIPTS_HOME}/lambda_functions/${LAMBDA_SCRIPT}" | envsubst > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.py"
   if [[ ${ZIP_ON} == yes ]]
   then
@@ -846,7 +845,7 @@ lambda_function_deployment()
     warn "  Lambda function: ${BLUE}${AWS_LAMBDA_FUNCTION_NAME}${WINE} already exists"
     EC2_LAMBDA_SCRIPT_ARN=$(jq -r --arg aws_lambda_function_name ${AWS_LAMBDA_FUNCTION_NAME} '.Functions[] | select(.FunctionName == $aws_lambda_function_name) | .FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
   else
-    inf "deploying lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+    inf "deploying Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
     aws ${AWS_PROFILE_USE_CHECK[*]} lambda create-function --timeout 15 --function-name ${AWS_LAMBDA_FUNCTION_NAME} --zip-file fileb://"${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" --handler ${AWS_LAMBDA_HANDLER} --runtime python3.8 --role ${EC2_LAMBDA_ROLE_ARN} > "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json" 2>&1
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -ne 0 ]
@@ -869,6 +868,7 @@ lambda_function_deployment()
       done
       inf "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${CYAN} deployed properly"
       EC2_LAMBDA_SCRIPT_ARN=$(jq -r '.FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json")
+      source "${SCRIPTS_HOME}/slack_notifiction_lambda"
     fi
   fi
 }
@@ -1617,6 +1617,7 @@ events_create_cron_rule()
     if [ ${ERROR_CODE} -eq 0 ]
     then
       inf "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} added properly"
+      #ToDo: slack about it
     else
       error "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${RED} failed to add"
       debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json"
@@ -1649,6 +1650,7 @@ events_add_target_to_rule()
     if [ ${ERROR_CODE} -eq 0 ]
     then
       inf "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} added properly"
+      #ToDo: slack about it
     else
       error "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't added"
       debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"

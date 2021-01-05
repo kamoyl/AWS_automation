@@ -41,7 +41,7 @@ $0 [-o DIRECTORY] -v [-O OWNER_ID] [-C]
         (default directory is: ${CYAN}${HOME}/var${BLUE} and TMP and LOG are subdirectories to var)
     ${LIME}-p${BLUE}  ${RED}[mandatory outside AWS env]${BLUE} - ${BROWN}PROFILE${BLUE} name stored in ~/.aws/config
     ${LIME}-C${BLUE}  CLEANING (${WINE}WARNING${BLUE}) - removing all running/stopped instance(s) (terminates them) and all volumes
-    ${LIME}-x${BLUE}  only works with [-C] - CLEANING (${RED}WARNING${BLUE}) - removes: S3 buckets (only empty), lambda functions, events-busses etc.
+    ${LIME}-x${BLUE}  only works with [-C] - CLEANING (${RED}WARNING${BLUE}) - removes: S3 buckets (only empty), Lambda functions, events-busses etc.
     ${LIME}-v${BLUE}  verbose${RESET}"
     1>&2;
     exit 1
@@ -675,7 +675,7 @@ then
       inf "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
       if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
       then
-        inf "    removing lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+        inf "    removing Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
         aws ${AWS_PROFILE_USE_CHECK[*]} lambda delete-function --function-name ${AWS_LAMBDA_FUNCTION_NAME}
       fi
     done
@@ -765,7 +765,7 @@ then
   export SLACK_INSTANCES=$(cat "${TMP}/${AWS_INSTANCES_DETAILS}_slack.out")
   export SLACK_AMIS=$(cat "${TMP}/${AWS_AMIS_DETAILS}_slack.out")
   export SLACK_VOLS=$(cat "${TMP}/${AWS_VOLS_DETAILS}_slack.out")
-  source "${SCRIPTS_HOME}/slack_notifiction"
+  source "${SCRIPTS_HOME}/slack_notifiction_info"
   if [[ ${VERBOSE} == yes ]]
   then
     debug "    has just been sent"

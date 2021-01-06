@@ -868,6 +868,7 @@ lambda_function_deployment()
       done
       inf "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${CYAN} deployed properly"
       EC2_LAMBDA_SCRIPT_ARN=$(jq -r '.FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json")
+      debug "    Slack notification...."
       source "${SCRIPTS_HOME}/slack_notifiction_lambda"
     fi
   fi
@@ -1617,7 +1618,8 @@ events_create_cron_rule()
     if [ ${ERROR_CODE} -eq 0 ]
     then
       inf "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} added properly"
-      #ToDo: slack about it
+      debug "        Slack notification...."
+      source "${SCRIPTS_HOME}/slack_notifiction_event_rule"
     else
       error "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${RED} failed to add"
       debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json"
@@ -1650,7 +1652,8 @@ events_add_target_to_rule()
     if [ ${ERROR_CODE} -eq 0 ]
     then
       inf "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} added properly"
-      #ToDo: slack about it
+      debug "            Slack notification...."
+      source "${SCRIPTS_HOME}/slack_notifiction_lambda_target"
     else
       error "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't added"
       debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"

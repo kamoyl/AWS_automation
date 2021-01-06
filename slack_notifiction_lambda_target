@@ -7,29 +7,21 @@ fi
 
 IFS=${ORIGIFS}
 
-SLACK_HEADER="
+SLACK_PAYLOAD="
 {\\\"channel\\\": \\\"${SLACK_CHANNEL_AWS}\\\"
   , \\\"username\\\": \\\"${USER}, (${YOUR_IP})\\\"
-  , \\\"icon_emoji\\\": \\\":moneybag:\\\"
+  , \\\"icon_emoji\\\": \\\":on:\\\"
   , \\\"attachments\\\":
     [
       {
-        \\\"fallback\\\": \\\"AWS EC2 instances and status, run from ${DEFAULT_INET_IP}, FQDN: ${HOSTNAME_FQDN}, costs: ${CURRENT_MONTH_COSTS}\\\",
-        \\\"color\\\": \\\"danger\\\",
-        \\\"title\\\": \\\"AWS (ID: ${AWS_OWNER_ID}) - monthly costs: ${CURRENT_MONTH_COSTS}\$\\\",
-        \\\"title_link\\\": \\\"${AWS_LOGIN_URL}\\\",
-        \\\"text\\\": \\\"*AWS ${AWS_COMMON_NAME} EC2 details*:
-                   \\\",
-        \\\"fields\\\":
-            ["
-SLACK_FOOTER="
-            ],
-        \\\"footer\\\": \\\"<${AWS_LOGIN_URL}|AWS log in:>\\\",
-        \\\"footer_icon\\\": \\\"https://github.com/quintessence/slack-icons/blob/master/images/amazon-web-services-slack-icon.png\\\"
+        \\\"fallback\\\": \\\"Event target: ${EVENT_BRIDGE_TARGET_ID}${CYAN} has been added to rule:  ${EVENT_BRIDGE_RULE_NAME}\\\",
+        \\\"color\\\": \\\"good\\\",
+        \\\"title\\\": \\\"AWS EventBridge notification:\\\",
+        \\\"text\\\": \\\"Event target: *${EVENT_BRIDGE_TARGET_ID}* has been added to rule: *${EVENT_BRIDGE_RULE_NAME}*\\\"
       }
     ]
 , \\\"token\\\": \\\"${SLACK_TOKEN}\\\"
 }" 
 
-echo "curl ${SLACK_PROXY_CONTROL[*]} -v -X POST --data \"${SLACK_HEADER}${SLACK_INSTANCES}${SLACK_VOLS}${SLACK_AMIS}${SLACK_FOOTER}\" ${SLACK_WEB_HOOK}" > "${TMP}/${AWS_INSTANCES_DETAILS}_slack.in"
-source "${TMP}/${AWS_INSTANCES_DETAILS}_slack.in" > "${LOG}/${AWS_INSTANCES_DETAILS}_slack.log" 2>&1
+echo "curl ${SLACK_PROXY_CONTROL[*]} -v -X POST --data \"${SLACK_PAYLOAD}\" ${SLACK_WEB_HOOK}" > "${TMP}/${RANDOM_ID_GEN}_slack_eventbridge_target.in"
+source "${TMP}/${RANDOM_ID_GEN}_slack_eventbridge_target.in" > "${LOG}/${RANDOM_ID_GEN}_slack_eventbridge_target.log" 2>&1

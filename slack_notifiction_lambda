@@ -16,10 +16,8 @@ SLACK_PAYLOAD="
       {
         \\\"fallback\\\": \\\"Lambda function: ${AWS_LAMBDA_FUNCTION_NAME} has just been created\\\",
         \\\"color\\\": \\\"good\\\",
-        \\\"title\\\": \\\"AWS Lambda function: ${AWS_LAMBDA_FUNCTION_NAME}\\\",
-        \\\"text\\\": \\\"*  has been deployed*\\\",
-        \\\"footer\\\": \\\"<${AWS_LOGIN_URL}|AWS log in:>\\\",
-        \\\"footer_icon\\\": \\\"https://github.com/quintessence/slack-icons/blob/master/images/amazon-web-services-slack-icon.png\\\"
+        \\\"title\\\": \\\"AWS Lambda notification\\\",
+        \\\"text\\\": \\\"AWS Lambda function: *${AWS_LAMBDA_FUNCTION_NAME}* has been deployed\\\"
       }
     ]
 , \\\"token\\\": \\\"${SLACK_TOKEN}\\\"

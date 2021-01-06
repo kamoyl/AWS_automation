@@ -533,9 +533,9 @@ then
     EVENT_BUS_NAME=${EVENT_BUS}
     EVENT_BUS_ARN="$(jq -r --arg event_bus_name ${EVENT_BUS_NAME} '.EventBuses[] | select(.Name == $event_bus_name) | .Arn' "${TMP}/${AWS_EVENTS_BUSES}_full.json")"
     inf "  Event bus: ${DARK_GREEN}${EVENT_BUS_NAME}"
-    if [ -s "${TMP}/${AWS_EVENTS_RULES}_full.json" ] && [ ! -z $(jq -r --arg aws_common_name ${AWS_COMMON_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | startswith($aws_common_name)) | select(.EventBusName == $event_bus_name) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json" | head -n1) ]
+    if [ -s "${TMP}/${AWS_EVENTS_RULES}_full.json" ] && [ ! -z $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | contains($aws_default_name) | not) | select(.EventBusName == $event_bus_name) | select(.ManagedBy == "schemas.amazonaws.com" | not) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json" | head -n1) ]
     then
-      for EVENT_RULE in $(jq -r --arg aws_common_name ${AWS_COMMON_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | startswith($aws_common_name)) | select(.EventBusName == $event_bus_name) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+      for EVENT_RULE in $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | contains($aws_default_name) | not) | select(.EventBusName == $event_bus_name) | select(.ManagedBy == "schemas.amazonaws.com" | not) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json")
       do
         aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --event-bus-name ${EVENT_BUS_NAME} --rule ${EVENT_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" 2>&1
         EVENT_RULE_NAME=${EVENT_RULE}

@@ -230,7 +230,7 @@ aws_key_create()
       warn "      Current user key doesn't exists in AWS EC2"
       inf "        Importing..."
       KEY_NAME="${USER}_${CURRENT_TIMESTAMP}_gen"
-      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 import-key-pair --key-name ${KEY_NAME} --public-key-material fileb://"${HOME}/.ssh/id_rsa.pub" > "${TMP}/${AWS_EC2_KEYPAIRS}_${KEY_NAME}_imported_full.json" 2>&1
+      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 import-key-pair --key-name ${KEY_NAME} --public-key-material fileb://"${HOME}/.ssh/id_rsa.pub" > "${TMP}/${AWS_EC2_KEYPAIRS}_${KEY_NAME}_imported_full.json" 2>"${LOG}/${AWS_EC2_KEYPAIRS}_${KEY_NAME}_imported.log"
       ERROR_CODE="$?"
       if [ ${ERROR_CODE} -eq 0 ]
       then
@@ -242,7 +242,7 @@ aws_key_create()
         debug "            LOG FILE: ${YELLOW}${TMP}/${AWS_EC2_KEYPAIRS}_${KEY_NAME}_imported_full.json"
         failed
       fi
-      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-key-pairs > "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" 2>&1 &
+      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-key-pairs > "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" 2>"${LOG}/${AWS_EC2_KEYPAIRS}.log" &
     else
       export KEY_NAME=$(jq -r --arg KeyFingerprint ${CURRENT_USER_FINGERPRINT} '.KeyPairs[] | select(.KeyFingerprint == $KeyFingerprint) | .KeyName' "${TMP}/${AWS_EC2_KEYPAIRS}_full.json")
       inf "      Current user: ${YELLOW}${USER}${CYAN} exists in AWS EC2 with key name: ${BROWN}${KEY_NAME}"
@@ -250,8 +250,8 @@ aws_key_create()
   else
     inf "  I cannot find private key of current user: ${YELLOW}${USER}${CYAN}, creating AWS key pairs"
     KEY_NAME="${USER}_${CURRENT_TIMESTAMP}_gen"
-    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 create-key-pair --key-name ${KEY_NAME} --query 'KeyMaterial' --output text > "${TMP}/${AWS_EC2_KEYPAIRS}_${KEY_NAME}-generated_id_rsa.key" 2>&1
-    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-key-pairs > "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" 2>&1 &
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 create-key-pair --key-name ${KEY_NAME} --query 'KeyMaterial' --output text > "${TMP}/${AWS_EC2_KEYPAIRS}_${KEY_NAME}-generated_id_rsa.key" 2>"${LOG}/${AWS_EC2_KEYPAIRS}_${KEY_NAME}-generated_id_rsa.log"
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-key-pairs > "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" 2>"${LOG}/${AWS_EC2_KEYPAIRS}.log"
     KEY_NAME="${USER}_${CURRENT_TIMESTAMP}_gen"
     KEY_FINGERPRINT=$(jq -r --arg key_name ${KEY_NAME} '.KeyPairs[] | select(.KeyName == $key_name) | .KeyFingerprint' "${TMP}/${AWS_EC2_KEYPAIRS}_full.json")
     KEY_PAIR_ID=$(jq -r --arg KeyFingerprint ${KEY_FINGERPRINT} '.KeyPairs[] | select(.KeyFingerprint == $KeyFingerprint) | .KeyPairId' "${TMP}/${AWS_EC2_KEYPAIRS}_full.json")
@@ -323,7 +323,7 @@ aws_list-roles()
 {
   inf ""
   inf "${MAGENTA}IAM roles:"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-roles > "${TMP}/${AWS_ROLES}_full.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-roles > "${TMP}/${AWS_ROLES}_full.json" 2>"${LOG}/${AWS_ROLES}.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
@@ -332,7 +332,7 @@ aws_list-roles()
     then
       warn "  There is no role(s)"
     else
-      jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Roles[] | select(.Arn | contains("aws-service-role") | not) | select(.Arn | contains($aws_default_name) | not)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_NAMES_PREFIX}_full.json" 2>&1
+      jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Roles[] | select(.Arn | contains("aws-service-role") | not) | select(.Arn | contains($aws_default_name) | not)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_NAMES_PREFIX}_full.json" 2>"${LOG}/${AWS_ROLES}_${AWS_NAMES_PREFIX}.log"
       for AWS_IAM_ROLE_NAME in $(jq -r '.RoleName' "${TMP}/${AWS_ROLES}_${AWS_NAMES_PREFIX}_full.json")
       do
         AWS_IAM_ROLE_ARN="$(jq -r --arg aws_iam_role_name ${AWS_IAM_ROLE_NAME} '.Roles[] | select(.RoleName == $aws_iam_role_name) | .Arn' "${TMP}/${AWS_ROLES}_full.json")"
@@ -397,7 +397,7 @@ aws_list-profiles()
 {
   inf ""
   inf "${MAGENTA}EC2 instance profiles:"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-instance-profiles > "${TMP}/${AWS_INSTANCE_PROFILES}_full.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-instance-profiles > "${TMP}/${AWS_INSTANCE_PROFILES}_full.json" 2>"${LOG}/${AWS_INSTANCE_PROFILES}.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
@@ -462,7 +462,7 @@ aws_list-securitygroups()
 {
   inf ""
   inf "${MAGENTA}EC2 security groups:"
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups > "${TMP}/${AWS_SECURITY_GROUPS}_full.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups > "${TMP}/${AWS_SECURITY_GROUPS}_full.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
@@ -521,7 +521,7 @@ aws_instance_removal()
     AWS_INSTANCE_ID="${1}"
   fi
   inf "    ${WINE}Terminating instance: ${YELLOW}${AWS_INSTANCE_ID}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 terminate-instances --instance-id ${AWS_INSTANCE_ID} > "${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination.log.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 terminate-instances --instance-id ${AWS_INSTANCE_ID} > "${TMP}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination.json" 2>"${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
@@ -559,12 +559,15 @@ aws_instance_stop()
   else
     AWS_INSTANCE_ID="${1}"
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 stop-instances --instance-id ${AWS_INSTANCE_ID} > "${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_stop.log.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 stop-instances --instance-id ${AWS_INSTANCE_ID} > "${TMP}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_stop.json" 2>"${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_stop.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
     inf "      ${WINE}instance ${YELLOW}${AWS_INSTANCE_ID}${WINE} stopped properly."
   else
+    error "      instance ${YELLOW}${AWS_INSTANCE_ID}${RED} cannot be stopped"
+    debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_stop.log"
+    debug "          $(cat "${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_stop.log")"
     failed
   fi
 }
@@ -579,7 +582,7 @@ aws_vol_state_check()
   else
     AWS_VOLUME_ID="${1}"
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-volumes --volume-ids ${AWS_VOLUME_ID} > "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-volumes --volume-ids ${AWS_VOLUME_ID} > "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json" 2>"${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
@@ -588,8 +591,8 @@ aws_vol_state_check()
       warn "  Volume ${YELLOW}${AWS_VOLUME_ID}${WINE} has not existed already"
     else
       error "  Cannot check state of the volume: ${YELLOW}${AWS_VOLUME_ID}"
-      debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json"
-      debug "      $(cat ${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json)"
+      debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log"
+      debug "      $(cat "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log")"
     fi
   else
     VOLUME_STATE_ATTACHED=$(jq -r '.Volumes[].Attachments[].State' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
@@ -606,7 +609,15 @@ aws_vol_removal()
   else
     AWS_VOLUME_ID="${1}"
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-volumes --volume-ids ${AWS_VOLUME_ID} > "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json" 2>&1 
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-volumes --volume-ids ${AWS_VOLUME_ID} > "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json" 2>"${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log"
+  ERROR_CODE="$?"
+  if [ ${ERROR_CODE} -ne 0 ]
+  then
+    error "  Cannot collect volume ${YELLOW}${RED}${AWS_VOLUME_ID} information"
+    debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log"
+    debug "      $(cat "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log")"
+    failed
+  fi
   DELETE_ON_TERMINATION=$(jq -r '.Volumes[].Attachments[].DeleteOnTermination' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
   AWS_VOLUME_INSTANCE_ID=$(jq -r '.Volumes[].Attachments[].InstanceId' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
   if [ -z ${DELETE_ON_TERMINATION} ] || [[ ${DELETE_ON_TERMINATION} == "false" ]]
@@ -622,12 +633,8 @@ aws_vol_removal()
       done
       printf '\n'
     done
-    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 delete-volume --volume-id ${AWS_VOLUME_ID} > "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination.log" 2>&1
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 delete-volume --volume-id ${AWS_VOLUME_ID} > "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination.json" 2>"${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination.log"
     ERROR_CODE="$?"
-    if [[ ${VERBOSE} == "yes" ]]
-    then
-      debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination.log"
-    fi
     if [ ${ERROR_CODE} -eq 0 ]
     then
       inf "          ${WINE}volume: ${YELLOW}${AWS_VOLUME_ID}${WINE} removed properly"
@@ -650,6 +657,9 @@ aws_vol_removal()
       echo "curl ${SLACK_PROXY_CONTROL[*]} -v -X POST --data \"${SLACK_REMOVE_VOLUME}\" ${SLACK_WEB_HOOK}" > "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination_slack.in"
       source "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination_slack.in" > "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination_slack.log" 2>&1
     else
+      error "          volume: ${YELLOW}${AWS_VOLUME_ID}${RED} cannot be removed"
+      debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination.log"
+      debug "            $(cat "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination.log")"
       failed
     fi
   elif [[ ${DELETE_ON_TERMINATION} == "true" ]]
@@ -668,7 +678,8 @@ aws_snapshot_removal()
   else
     AWS_SNAPSHOT_ID="${1}"
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-snapshots --snapshot-ids ${AWS_SNAPSHOT_ID} > "${TMP}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_full.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-snapshots --snapshot-ids ${AWS_SNAPSHOT_ID} > "${TMP}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_full.json" 2>"${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}.log"
+  #ToDo: error handling
   AWS_SNAPSHOT_ID_CHECK=$(jq -r '.Snapshots[].SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_full.json")
   if [ ! -z ${AWS_SNAPSHOT_ID_CHECK} ]
   then
@@ -678,35 +689,37 @@ aws_snapshot_removal()
       if [ -z ${AMI_ID_SNAPSHOT} ]
       then
         inf   "    ${WINE}Removing not in-use snapshot (${YELLOW}${AWS_SNAPSHOT_ID}${WINE}):"
-        aws ${AWS_PROFILE_USE_CHECK[*]} ec2 delete-snapshot --snapshot-id ${AWS_SNAPSHOT_ID} > "${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination.log" 2>&1
-      ERROR_CODE="$?"
-      debug "      LOG FILE: ${YELLOW}${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination.log"
-      if [ ${ERROR_CODE} -eq 0 ]
-      then
-        inf "        ${WINE}Snapshot: ${YELLOW}${AWS_SNAPSHOT_ID}${WINE} removed properly"
-        SLACK_REMOVE_VOLUME="
-          {\\\"channel\\\": \\\"${SLACK_CHANNEL_AWS}\\\"
-            , \\\"username\\\": \\\"${USER}\\\"
-            , \\\"icon_emoji\\\": \\\":file_folder:\\\"
-            , \\\"attachments\\\":
-            [
-              {
-                \\\"fallback\\\": \\\"AWS unused snapshot: ${AWS_SNAPSHOT_ID} has just been removed\\\",
-                \\\"title\\\": \\\"Removal of AWS unused snapshot: ${AWS_SNAPSHOT_ID}\\\",
-                \\\"title_link\\\": \\\"${AWS_LOGIN_URL}\\\",
-                \\\"footer\\\": \\\"<${AWS_LOGIN_URL}|AWS log in:>\\\",
-                \\\"footer_icon\\\": \\\"https://github.com/quintessence/slack-icons/blob/master/images/amazon-web-services-slack-icon.png\\\"
-              }
-            ]
-            , \\\"token\\\": \\\"${SLACK_TOKEN}\\\"
-          }"
-        echo "curl ${SLACK_PROXY_CONTROL[*]} -v -X POST --data \"${SLACK_REMOVE_VOLUME}\" ${SLACK_WEB_HOOK}" > "${TMP}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination_slack.in"
-        source "${TMP}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination_slack.in" > "${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination_slack.log" 2>&1
-      else
-        failed
+        aws ${AWS_PROFILE_USE_CHECK[*]} ec2 delete-snapshot --snapshot-id ${AWS_SNAPSHOT_ID} > "${TMP}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination.json" 2>"${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination.log"
+        ERROR_CODE="$?"
+        if [ ${ERROR_CODE} -eq 0 ]
+        then
+          inf "        ${WINE}Snapshot: ${YELLOW}${AWS_SNAPSHOT_ID}${WINE} removed properly"
+          SLACK_REMOVE_VOLUME="
+            {\\\"channel\\\": \\\"${SLACK_CHANNEL_AWS}\\\"
+              , \\\"username\\\": \\\"${USER}\\\"
+              , \\\"icon_emoji\\\": \\\":file_folder:\\\"
+              , \\\"attachments\\\":
+              [
+                {
+                  \\\"fallback\\\": \\\"AWS unused snapshot: ${AWS_SNAPSHOT_ID} has just been removed\\\",
+                  \\\"title\\\": \\\"Removal of AWS unused snapshot: ${AWS_SNAPSHOT_ID}\\\",
+                  \\\"title_link\\\": \\\"${AWS_LOGIN_URL}\\\",
+                  \\\"footer\\\": \\\"<${AWS_LOGIN_URL}|AWS log in:>\\\",
+                  \\\"footer_icon\\\": \\\"https://github.com/quintessence/slack-icons/blob/master/images/amazon-web-services-slack-icon.png\\\"
+                }
+              ]
+              , \\\"token\\\": \\\"${SLACK_TOKEN}\\\"
+            }"
+          echo "curl ${SLACK_PROXY_CONTROL[*]} -v -X POST --data \"${SLACK_REMOVE_VOLUME}\" ${SLACK_WEB_HOOK}" > "${TMP}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination_slack.in"
+          source "${TMP}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination_slack.in" > "${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination_slack.log" 2>&1
+        else
+          error "      Snapshot: ${YELLOW}${AWS_SNAPSHOT_ID}${RED} cannot be removed"
+          debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination.log"
+          debug "        $(cat "${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination.log")"
+          failed
+        fi
       fi
     fi
-  fi
   fi
 }
 
@@ -744,14 +757,15 @@ aws_ec2_policy_create()
               }
             ]
         }" > "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}-def.json"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam create-policy --policy-name "${AWS_POLICY_NAME}" --description "Full access from EC2 env to ANY internal S3 bucket, another instance, cloudwatch, iam and ce" --policy-document file://"${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}-def.json" > "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam create-policy --policy-name "${AWS_POLICY_NAME}" --description "Full access from EC2 env to ANY internal S3 bucket, another instance, cloudwatch, iam and ce" --policy-document file://"${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}-def.json" > "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.json" 2>"${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
     inf "      Policy ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} created properly"
   else
     error "      Policy ${DARK_GREEN}${AWS_POLICY_NAME}${RED} creation failed, exiting.."
-    debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.json"
+    debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log"
+    debug "          $(cat "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log")"
     failed
   fi
 }
@@ -799,14 +813,15 @@ aws_lambda_policy_create()
               }
             ]
         }" > "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}-def.json"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam create-policy --policy-name "${AWS_POLICY_NAME}" --description "Full access from Lambda to EC2" --policy-document file://"${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}-def.json" > "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam create-policy --policy-name "${AWS_POLICY_NAME}" --description "Full access from Lambda to EC2" --policy-document file://"${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}-def.json" > "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.json" 2>"${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
     inf "      Lambda policy ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} created properly"
   else
     error "      Lambda policy ${DARK_GREEN}${AWS_POLICY_NAME}${RED} creation failed, exiting.."
-    debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.json"
+    debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log"
+    debug "          $(cat "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log")"
     failed
   fi
 }
@@ -829,7 +844,7 @@ lambda_function_deployment()
     zip -j -q "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.py"
   elif [[ ${SP_ON} == yes ]]
   then
-    7z a "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" "${SCRIPTS_HOME}/${AWS_LAMBDA_FUNCTION_NAME}.py" > /dev/null 2>&1
+    7z a "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" "${SCRIPTS_HOME}/${AWS_LAMBDA_FUNCTION_NAME}.py" > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}_compress.output" 2>"${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_compress.log"
   fi
   NUMBER=0
   while [ ${NUMBER} -le 10 ]
@@ -846,12 +861,13 @@ lambda_function_deployment()
     EC2_LAMBDA_SCRIPT_ARN=$(jq -r --arg aws_lambda_function_name ${AWS_LAMBDA_FUNCTION_NAME} '.Functions[] | select(.FunctionName == $aws_lambda_function_name) | .FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
   else
     inf "deploying Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
-    aws ${AWS_PROFILE_USE_CHECK[*]} lambda create-function --timeout 15 --function-name ${AWS_LAMBDA_FUNCTION_NAME} --zip-file fileb://"${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" --handler ${AWS_LAMBDA_HANDLER} --runtime python3.8 --role ${EC2_LAMBDA_ROLE_ARN} > "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json" 2>&1
+    aws ${AWS_PROFILE_USE_CHECK[*]} lambda create-function --timeout 15 --function-name ${AWS_LAMBDA_FUNCTION_NAME} --zip-file fileb://"${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" --handler ${AWS_LAMBDA_HANDLER} --runtime python3.8 --role ${EC2_LAMBDA_ROLE_ARN} > "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json" 2>"${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}.log"
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -ne 0 ]
     then
       error "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${RED} cannot be deployed"
-      ENCODED_ERROR_MESSAGE=$(grep "\[ERROR\]" "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json" | awk -F"failure message:" '{print $2}')
+      debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}.log"
+      ENCODED_ERROR_MESSAGE=$(grep "\[ERROR\]" "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}.log" | awk -F"failure message:" '{print $2}')
       DECODED_ERROR_MESSAGE=$(aws ${AWS_PROFILE_USE_CHECK[*]} sts decode-authorization-message --output text --encoded-message ${ENCODED_ERROR_MESSAGE} | jq -r)
       error "${DECODED_ERROR_MESSAGE}"
       failed
@@ -885,12 +901,14 @@ aws_list-entities-for-policy()
     AWS_POLICY_ARN="${1}"
     AWS_POLICY_NAME=$(echo ${AWS_POLICY_ARN} | awk -F\: '{print $6}' | awk -F\/ '{print $NF}')
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-entities-for-policy --policy-arn "${AWS_POLICY_ARN}" > "${TMP}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}_full.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-entities-for-policy --policy-arn "${AWS_POLICY_ARN}" > "${TMP}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}_full.json" 2>"${LOG}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}.log"
+  #ToDo: error handling
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "  Policy ${DARK_GREEN}${AWS_POLICY_ARN}${RED} entities couldn't be collected, exiting.."
-    debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}_full.json"
+    debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}.log"
+    debug "      $(cat "${LOG}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}.log")"
     failed
   fi
 }

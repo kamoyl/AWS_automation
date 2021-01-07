@@ -239,7 +239,8 @@ aws_key_create()
         inf "          Imported key: ${BROWN}${KEY_PAIR_ID}"
       else
         error "          Key cannot be imported, exiting"
-        debug "            LOG FILE: ${YELLOW}${TMP}/${AWS_EC2_KEYPAIRS}_${KEY_NAME}_imported_full.json"
+        debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_EC2_KEYPAIRS}_${KEY_NAME}_imported.log"
+        error "              $(cat "${LOG}/${AWS_EC2_KEYPAIRS}_${KEY_NAME}_imported.log")"
         failed
       fi
       aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-key-pairs > "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" 2>"${LOG}/${AWS_EC2_KEYPAIRS}.log" &
@@ -277,6 +278,7 @@ aws_key_removal()
   else
     error "      Key ${LIME}${KEY_PAIR_ID}${CYAN} couldn't be removed properly, exiting"
     debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_EC2_KEYPAIRS}_${EC2_KEY_ID}_removal.log"
+    error "          $(cat "${LOG}/${AWS_EC2_KEYPAIRS}_${EC2_KEY_ID}_removal.log")"
     failed
   fi
 }
@@ -388,7 +390,8 @@ aws_list-roles()
     fi
   else
     error "  Roles couldn't be collected properly, exiting"
-    debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_ROLES}_full.json"
+    debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_ROLES}.log"
+    error "    $(cat "${LOG}/${AWS_ROLES}.log")"
     failed
   fi
 }
@@ -453,7 +456,8 @@ aws_list-profiles()
     fi
   else
     error "  Instance profiles couldn't be collected properly, exiting"
-    debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_INSTANCE_PROFILES}_full.json"
+    debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCE_PROFILES}.log"
+    error "      $(cat "${LOG}/${AWS_INSTANCE_PROFILES}.log")"
     failed
   fi
 }
@@ -483,7 +487,8 @@ aws_list-securitygroups()
     fi
   else
     error "  Security groups couldn't be collected properly, exiting"
-    debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_SECURITY_GROUPS}_full.json"
+    debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_SECURITY_GROUPS}.log"
+    error "      $(cat "${LOG}/${AWS_SECURITY_GROUPS}.log")"
     failed
   fi
 }
@@ -567,7 +572,7 @@ aws_instance_stop()
   else
     error "      instance ${YELLOW}${AWS_INSTANCE_ID}${RED} cannot be stopped"
     debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_stop.log"
-    debug "          $(cat "${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_stop.log")"
+    error "          $(cat "${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_stop.log")"
     failed
   fi
 }
@@ -592,7 +597,7 @@ aws_vol_state_check()
     else
       error "  Cannot check state of the volume: ${YELLOW}${AWS_VOLUME_ID}"
       debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log"
-      debug "      $(cat "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log")"
+      error "      $(cat "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log")"
     fi
   else
     VOLUME_STATE_ATTACHED=$(jq -r '.Volumes[].Attachments[].State' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
@@ -615,7 +620,7 @@ aws_vol_removal()
   then
     error "  Cannot collect volume ${YELLOW}${RED}${AWS_VOLUME_ID} information"
     debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log"
-    debug "      $(cat "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log")"
+    error "      $(cat "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}.log")"
     failed
   fi
   DELETE_ON_TERMINATION=$(jq -r '.Volumes[].Attachments[].DeleteOnTermination' "${TMP}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_full.json")
@@ -659,7 +664,7 @@ aws_vol_removal()
     else
       error "          volume: ${YELLOW}${AWS_VOLUME_ID}${RED} cannot be removed"
       debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination.log"
-      debug "            $(cat "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination.log")"
+      error "            $(cat "${LOG}/${AWS_VOLS_DETAILS}_${AWS_VOLUME_ID}_termination.log")"
       failed
     fi
   elif [[ ${DELETE_ON_TERMINATION} == "true" ]]
@@ -715,7 +720,7 @@ aws_snapshot_removal()
         else
           error "      Snapshot: ${YELLOW}${AWS_SNAPSHOT_ID}${RED} cannot be removed"
           debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination.log"
-          debug "        $(cat "${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination.log")"
+          error "          $(cat "${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_termination.log")"
           failed
         fi
       fi
@@ -765,7 +770,7 @@ aws_ec2_policy_create()
   else
     error "      Policy ${DARK_GREEN}${AWS_POLICY_NAME}${RED} creation failed, exiting.."
     debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log"
-    debug "          $(cat "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log")"
+    error "          $(cat "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log")"
     failed
   fi
 }
@@ -821,7 +826,7 @@ aws_lambda_policy_create()
   else
     error "      Lambda policy ${DARK_GREEN}${AWS_POLICY_NAME}${RED} creation failed, exiting.."
     debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log"
-    debug "          $(cat "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log")"
+    error "          $(cat "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_creation.log")"
     failed
   fi
 }
@@ -869,7 +874,7 @@ lambda_function_deployment()
       debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}.log"
       ENCODED_ERROR_MESSAGE=$(grep "\[ERROR\]" "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}.log" | awk -F"failure message:" '{print $2}')
       DECODED_ERROR_MESSAGE=$(aws ${AWS_PROFILE_USE_CHECK[*]} sts decode-authorization-message --output text --encoded-message ${ENCODED_ERROR_MESSAGE} | jq -r)
-      error "${DECODED_ERROR_MESSAGE}"
+      error "      ${DECODED_ERROR_MESSAGE}"
       failed
     else
       while [[ $(aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-function --function-name ${AWS_LAMBDA_FUNCTION_NAME} | jq -r '.Configuration.State') == "Pending" ]]
@@ -908,7 +913,7 @@ aws_list-entities-for-policy()
   then
     error "  Policy ${DARK_GREEN}${AWS_POLICY_ARN}${RED} entities couldn't be collected, exiting.."
     debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}.log"
-    debug "      $(cat "${LOG}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}.log")"
+    error "      $(cat "${LOG}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}.log")"
     failed
   fi
 }
@@ -925,7 +930,7 @@ aws_policy_removal()
     AWS_POLICY_NAME=$(aws ${AWS_PROFILE_USE_CHECK[*]} iam list-policies | jq -r --arg aws_policy_arn ${AWS_POLICY_ARN} '.Policies[] | select(.Arn == $aws_policy_arn) | .PolicyName')
   fi
   inf "      Removing policy: ${DARK_GREEN}${AWS_POLICY_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-policy --policy-arn "${AWS_POLICY_ARN}"  > "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_policy_deletion.log" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-policy --policy-arn "${AWS_POLICY_ARN}"  > "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_policy_deletion.json" 2>"${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_policy_deletion.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
@@ -959,7 +964,8 @@ aws_policy_removal()
       fi
     else
       error "        policy: ${DARK_GREEN}${AWS_POLICY_NAME}${RED} cannot be removed, exiting"
-      debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_policy_deletion.json"
+      debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_policy_deletion.log"
+      error "            $(cat "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_policy_deletion.log")"
       failed
     fi
   else
@@ -985,12 +991,13 @@ aws_attaching_policy_to_role()
     AWS_POLICY_NAME=$(jq -r --arg prefixed_policy_arn "${AWS_POLICY_ARN}" 'select(.Arn == $prefixed_policy_arn) | .PolicyName' "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json")
   fi
   inf "    Attaching policy: ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} to role: ${YELLOW}${AWS_ROLE_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam attach-role-policy --role-name ${AWS_ROLE_NAME} --policy-arn "${AWS_POLICY_ARN}" > "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_attaching.log" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam attach-role-policy --role-name ${AWS_ROLE_NAME} --policy-arn "${AWS_POLICY_ARN}" > "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_attaching.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_attaching.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "      Policy: ${DARK_GREEN}${AWS_POLICY_NAME}${RED} cannot be attached to role: ${YELLOW}${AWS_ROLE_NAME}${RED}, exiting"
     debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_attaching.log"
+    error "          $(cat "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_attaching.log")"
     failed
   else
     inf "      Policy: ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} attached properly to role: ${YELLOW}${AWS_ROLE_NAME}"
@@ -1010,12 +1017,13 @@ aws_detaching_policy_from_role()
     AWS_POLICY_NAME=$(aws ${AWS_PROFILE_USE_CHECK[*]} iam list-policies | jq -r --arg aws_policy_arn ${AWS_POLICY_ARN} '.Policies[] | select(.Arn == $aws_policy_arn) | .PolicyName')
   fi
   inf "      Detaching policy: ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} from role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN}..."
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam detach-role-policy --role-name ${AWS_IAM_ROLE_NAME} --policy-arn "${AWS_IAM_POLICY_ARN}" > "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_detaching.log" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam detach-role-policy --role-name ${AWS_IAM_ROLE_NAME} --policy-arn "${AWS_IAM_POLICY_ARN}" > "${TMP}/${AWS_POLICIES}_${AWS_POLICY_NAME}_detaching.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_detaching.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "        Policy: ${DARK_GREEN}${AWS_POLICY_NAME}${RED} cannot be detached from role: ${YELLOW}${AWS_IAM_ROLE_NAME}${RED}, exiting"
     debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_detaching.log"
+    error "            $(cat "${LOG}/${AWS_POLICIES}_${AWS_POLICY_NAME}_detaching.log")"
     failed
   else
     inf "        Policy: ${DARK_GREEN}${AWS_POLICY_NAME}${CYAN} detached properly from role: ${YELLOW}${AWS_IAM_ROLE_NAME}"
@@ -1032,12 +1040,13 @@ aws_list-attached-role-policies()
   else
     AWS_IAM_ROLE_NAME=${1}
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-attached-role-policies --role-name ${AWS_IAM_ROLE_NAME} > "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}_full.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-attached-role-policies --role-name ${AWS_IAM_ROLE_NAME} > "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}_full.json" 2>"${LOGP}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "  Policies attached to role ${YELLOW}${AWS_IAM_ROLE_NAME}${RED} couldn't be collected, exiting.."
-    debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}_full.json"
+    debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}.log"
+    error "      $(cat "${LOG}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}.log")"
     failed
   fi
 }
@@ -1052,12 +1061,13 @@ aws_list-instance-profiles-for-role()
   else
     AWS_IAM_ROLE_NAME=${1}
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-instance-profiles-for-role --role-name "${AWS_IAM_ROLE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_ROLE_NAME}_full.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-instance-profiles-for-role --role-name "${AWS_IAM_ROLE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_ROLE_NAME}_full.json" 2>"${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_ROLE_NAME}.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "  Instance profiles attached to role ${YELLOW}${AWS_IAM_ROLE_NAME}${RED} couldn't be collected, exiting.."
-    debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_ROLE_NAME}_full.json"
+    debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_ROLE_NAME}.log"
+    error "      $(cat "${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_ROLE_NAME}.log")"
     failed
   fi
 }
@@ -1073,7 +1083,7 @@ aws_creating_instance_profile()
     AWS_INSTANCE_PROFILE_NAME="${1}"
   fi
   inf "    Creating instance profile ${LIME}${AWS_INSTANCE_PROFILE_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam create-instance-profile --instance-profile-name "${AWS_INSTANCE_PROFILE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_creation.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam create-instance-profile --instance-profile-name "${AWS_INSTANCE_PROFILE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_creation.json" 2>"${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_creation.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
@@ -1082,7 +1092,8 @@ aws_creating_instance_profile()
     inf "      Instance profile ${LIME}${AWS_INSTANCE_PROFILE_NAME}${CYAN} has just been created"
   else
     error "      Instance profile ${LIME}${AWS_INSTANCE_PROFILE_NAME}${RED} creation failed, exitting.."
-    debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_creation.json"
+    debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_creation.log"
+    error "          $(cat "${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_creation.log")"
     failed
   fi
 }
@@ -1098,12 +1109,13 @@ aws_instance-profile_removal()
     AWS_INSTANCE_PROFILE_NAME="${1}"
   fi
   inf "        Removing instance_profile"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-instance-profile --instance-profile-name ${AWS_INSTANCE_PROFILE_NAME} > "${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_deletion.log" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-instance-profile --instance-profile-name ${AWS_INSTANCE_PROFILE_NAME} > "${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_deletion.json"  2>"${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_deletion.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "         instance profile: ${DARK_GREEN}${AWS_INSTANCE_PROFILE_NAME}${RED} cannot be removed, exiting"
     debug "           LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_deletion.log"
+    error "             $(cat "${LOG}/${AWS_INSTANCE_PROFILES}_${AWS_INSTANCE_PROFILE_NAME}_deletion.log")"
     failed
   else
     inf "          instance profile: ${DARK_GREEN}${AWS_INSTANCE_PROFILE_NAME}${CYAN} removed properly"
@@ -1122,12 +1134,13 @@ aws_removing_role_from_instance_profile()
     AWS_INSTANCE_PROFILE_NAME="${2}"
   fi
   inf "        Removing role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN} from instance profile: ${LIME}${AWS_INSTANCE_PROFILE_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam remove-role-from-instance-profile --instance-profile-name "${AWS_INSTANCE_PROFILE_NAME}" --role-name "${AWS_IAM_ROLE_NAME}" > "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_from_instance-profile_deletion.log"
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam remove-role-from-instance-profile --instance-profile-name "${AWS_INSTANCE_PROFILE_NAME}" --role-name "${AWS_IAM_ROLE_NAME}" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_from_instance-profile_deletion.json" 2>"${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_from_instance-profile_deletion.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "        Removing role: ${YELLOW}${AWS_IAM_ROLE_NAME}${RED} from instance profile: ${LIME}${AWS_INSTANCE_PROFILE_NAME}${RED} failed, exiting"
     debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_from_instance-profile_deletion.log"
+    error "            $(cat "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_from_instance-profile_deletion.log")"
     failed
   else
     inf "          Removing role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN} from instance profile: ${LIME}${AWS_INSTANCE_PROFILE_NAME}${CYAN} succedeed"
@@ -1146,14 +1159,15 @@ aws_adding_role_to_instance_profile()
     EC2_INSTANCE_PROFILE_NAME="${2}"
   fi
   inf "    Adding role ${YELLOW}${ROLE_NAME}${CYAN} to instance profile ${LIME}${EC2_INSTANCE_PROFILE_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam add-role-to-instance-profile --role-name ${ROLE_NAME} --instance-profile-name "${EC2_INSTANCE_PROFILE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES}_${EC2_INSTANCE_PROFILE_NAME}_role-to-instance_profile.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam add-role-to-instance-profile --role-name ${ROLE_NAME} --instance-profile-name "${EC2_INSTANCE_PROFILE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES}_${EC2_INSTANCE_PROFILE_NAME}_role-to-instance_profile.json" 2>"${LOG}/${AWS_INSTANCE_PROFILES}_${EC2_INSTANCE_PROFILE_NAME}_role-to-instance_profile.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
     inf "      Role ${YELLOW}${ROLE_NAME}${CYAN} has been added successfully to instance profile: ${LIME}${EC2_INSTANCE_PROFILE_NAME}"
   else
     error "      Role ${YELLOW}${ROLE_NAME}${RED} has not been added to instance profile: ${LIME}${EC2_INSTANCE_PROFILE_NAME}${RED}, exiting"
-    debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_INSTANCE_PROFILES}_${EC2_INSTANCE_PROFILE_NAME}_role-to-instance_profile.json"
+    debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCE_PROFILES}_${EC2_INSTANCE_PROFILE_NAME}_role-to-instance_profile.log"
+    error "          $(cat "${LOG}/${AWS_INSTANCE_PROFILES}_${EC2_INSTANCE_PROFILE_NAME}_role-to-instance_profile.log")"
     failed
   fi
 }
@@ -1186,9 +1200,9 @@ aws_role_create()
   }" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role-def.json"
   if [ -z ${PERMISSIONS_BOUNDARY_ARN} ]
   then
-    aws ${AWS_PROFILE_USE_CHECK[*]} iam create-role --role-name ${AWS_IAM_ROLE_NAME} --assume-role-policy-document file://"${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role-def.json" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.json" 2>&1
+    aws ${AWS_PROFILE_USE_CHECK[*]} iam create-role --role-name ${AWS_IAM_ROLE_NAME} --assume-role-policy-document file://"${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role-def.json" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.json" 2>"${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.log"
   else
-    aws ${AWS_PROFILE_USE_CHECK[*]} iam create-role --permissions-boundary "${PERMISSIONS_BOUNDARY_ARN}" --role-name ${AWS_IAM_ROLE_NAME} --assume-role-policy-document file://"${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role-def.json" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.json" 2>&1
+    aws ${AWS_PROFILE_USE_CHECK[*]} iam create-role --permissions-boundary "${PERMISSIONS_BOUNDARY_ARN}" --role-name ${AWS_IAM_ROLE_NAME} --assume-role-policy-document file://"${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role-def.json" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.json" 2>"${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.log"
   fi
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
@@ -1202,7 +1216,8 @@ aws_role_create()
     AWS_IAM_ROLE_ARN="$(jq -r '.Role.Arn' "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.json")"
   else
     error "      Role ${YELLOW}${AWS_EC2_ROLE}${RED} creation failed, exiting.."
-    debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.json"
+    debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.log"
+    error "          $(cat "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_creation.log")"
     failed
   fi
 }
@@ -1274,7 +1289,7 @@ aws_role_removal()
     AWS_IAM_ROLE_NAME=${1}
   fi
   inf "        Removing role: ${YELLOW}${AWS_IAM_ROLE_NAME}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-role --role-name ${AWS_IAM_ROLE_NAME} > "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.log" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam delete-role --role-name ${AWS_IAM_ROLE_NAME} > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.json" 2>"${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
@@ -1292,6 +1307,7 @@ aws_role_removal()
     else
       error "       role: ${YELLOW}${AWS_IAM_ROLE_NAME}${RED} cannot be removed, exiting"
       debug "         LOG FILE: ${YELLOW}${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.log"
+      error "           $(cat "${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE_NAME}_role_deletion.log")"
       failed
     fi
   else
@@ -1320,12 +1336,13 @@ associating_instance-to-profile()
     done
     printf '\n'
   done
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 associate-iam-instance-profile --instance-id ${EC2_INSTANCE_ID} --iam-instance-profile Name="${EC2_INSTANCE_PROFILE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${EC2_INSTANCE_ID}_profile_association.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 associate-iam-instance-profile --instance-id ${EC2_INSTANCE_ID} --iam-instance-profile Name="${EC2_INSTANCE_PROFILE_NAME}" > "${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${EC2_INSTANCE_ID}_profile_association.json" 2>"${LOG}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${EC2_INSTANCE_ID}_profile_association.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
     error "  EC2 instance: ${YELLOW}${EC2_INSTANCE_ID}${RED} cannot be associated to instance-profile: ${LIME}${EC2_INSTANCE_PROFILE_NAME}${RED}, exiting"
-    debug "    LOG FILE: ${YELLOW}${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${EC2_INSTANCE_ID}_profile_association.json"
+    debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${EC2_INSTANCE_ID}_profile_association.log"
+    error "      $(cat "${LOG}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${EC2_INSTANCE_ID}_profile_association.log")"
     failed
   else
     inf "  EC2 instance: ${YELLOW}${EC2_INSTANCE_ID}${CYAN} associated properly to instance-profile: ${LIME}${EC2_INSTANCE_PROFILE_NAME}"
@@ -1351,6 +1368,7 @@ aws_S3_bucket_create()
   then
     error "      There was an error creating bucket: ${YELLOW}${S3_BUCKET_NAME}"
     debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_create.log"
+    error "          $(cat "${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_create.log")"
     failed
   else
     inf "      S3 bucket: ${YELLOW}${S3_BUCKET_NAME}${CYAN} has been created"
@@ -1580,15 +1598,15 @@ event_bridge_remove_target()
     EVENT_BRIDGE_TARGET_ID="${1}"
     EVENT_BRIDGE_RULE_NAME="${2}"
   fi
-  inf "      Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} will be removed from rule:  ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  inf "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} will be removed from rule:  ${LIME}${EVENT_BRIDGE_RULE_NAME}"
   aws ${AWS_PROFILE_USE_CHECK[*]} events remove-targets --rule ${EVENT_BRIDGE_RULE_NAME} --ids ${EVENT_BRIDGE_TARGET_ID} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target_removal_full.json" 2>&1
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
-    inf "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} removed properly"
+    inf "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} removed properly"
   else
-    error "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't removed properly"
-    debug "          LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target_removal_full.json"
+    error "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't removed properly"
+    debug "            LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target_removal_full.json"
     failed
   fi
 }
@@ -1603,15 +1621,15 @@ event_bridge_remove_rule()
   else
     EVENT_BRIDGE_RULE_NAME="${1}"
   fi
-  inf "      Removing rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  inf "    Removing rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
   aws ${AWS_PROFILE_USE_CHECK[*]} events delete-rule --name ${EVENT_BRIDGE_RULE_NAME} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_removal_full.json" 2>&1
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
-    inf "        Rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} removed properly"
+    inf "      Rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} removed properly"
   else
-    error "        Rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${RED} wasn't removed properly"
-    debug "          LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_removal_full.json"
+    error "      Rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${RED} wasn't removed properly"
+    debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_removal_full.json"
     failed
   fi
 }
@@ -1627,6 +1645,7 @@ events_create_cron_rule()
     EVENT_BRIDGE_RULE_NAME="${1}"
     EVENT_BRIDGE_RULE_NAME_CRON="${2}"
   fi
+  #ToDo: check it out if event rule already exist or not, and then add
   inf "    Adding event rule:  ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} with cron: ${BROWN}\"${EVENT_BRIDGE_RULE_NAME_CRON}\""
   EVENT_BRIDGE_RULE_NAME_CHECK=$(jq -r --arg event_bridge_rule_name ${EVENT_BRIDGE_RULE_NAME} '.Rules[] | select(.Name == $event_bridge_rule_name) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_full.json")
   if [ -z ${EVENT_BRIDGE_RULE_NAME_CHECK} ]
@@ -1650,6 +1669,36 @@ events_create_cron_rule()
 
 #aws ${AWS_PROFILE_USE_CHECK[*]} events create-event-bus --name ${AWS_COMMON_NAME}-EC2_scripts_deployment_bus > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_BUS}_full.json" 2>&1
 
+lambda_add_permission_to_trust_principal()
+{
+  if [ $# -ne 4 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs four parameter: ${YELLOW}(1)lambda_function_name, (2)event-name, (3)service-proncipal, (4)event_bridge-rule_name"
+    ERROR_CODE="1"
+    failed
+  else
+    AWS_LAMBDA_FUNCTION_NAME=${1}
+    EVENT_BRIDGE_EVENT_NAME=${2}
+    SERVICE_PRINCIPAL=${3}
+    EVENT_BRIDGE_RULE_NAME=${4}
+  fi
+  #ToDo: check if such permissions are already assigned
+  aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-policy --function-name ${AWS_LAMBDA_FUNCTION_NAME} --output text 2>"${LOG}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log" | jq -r > "${TMP}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json"
+  inf "      Trust ${DARK_GREEN}${SERVICE_PRINCIPAL}${CYAN} and scope permissions to the rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  EVENT_BRIDGE_RULE_ARN=$(jq -r '.RuleArn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json")
+  aws ${AWS_PROFILE_USE_CHECK[*]} lambda add-permission --function-name ${AWS_LAMBDA_FUNCTION_NAME} --statement-id ${EVENT_BRIDGE_EVENT_NAME} --action 'lambda:InvokeFunction' --principal ${SERVICE_PRINCIPAL} --source-arn ${EVENT_BRIDGE_RULE_ARN} > "${TMP}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.json" 2> "${LOG}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
+  ERROR_CODE="$?"
+  if [ ${ERROR_CODE} -eq 0 ]
+  then
+    inf "        Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trusts ${DARK_GREEN}${SERVICE_PRINCIPAL}"
+  else
+    error "        Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trust cannot be set"
+    debug "          LOG FILE: ${YELLOW}${LOG}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
+    error "            $(cat ${LOG}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log)"
+    failed
+  fi
+}
+
 events_add_target_to_rule()
 {
   if [ $# -ne 2 ]
@@ -1661,7 +1710,7 @@ events_add_target_to_rule()
     EVENT_BRIDGE_TARGET_ID=${1}
     EVENT_BRIDGE_RULE_NAME=${2}
   fi
-  inf "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} will be added to rule:  ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  inf "      Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} will be added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
   EVENT_BRIDGE_TARGET_ARN_CHECK=$(aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --rule ${EVENT_BRIDGE_RULE_NAME} | jq -r --arg arn ${EC2_LAMBDA_SCRIPT_ARN} '.Targets[] | select(.Arn == $arn) .Arn' | head -n1)
   if [ -z ${EVENT_BRIDGE_TARGET_ARN_CHECK} ]
   then
@@ -1669,12 +1718,12 @@ events_add_target_to_rule()
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -eq 0 ]
     then
-      inf "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} added properly"
-      debug "            Slack notification...."
+      inf "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} added properly"
+      debug "          Slack notification...."
       source "${SCRIPTS_HOME}/slack_notifiction_lambda_target"
     else
-      error "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't added"
-      debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"
+      error "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't added"
+      debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"
       failed
     fi
   else

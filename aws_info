@@ -537,7 +537,7 @@ then
     then
       for EVENT_RULE in $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | contains($aws_default_name) | not) | select(.EventBusName == $event_bus_name) | select(.ManagedBy == "schemas.amazonaws.com" | not) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json")
       do
-        aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --event-bus-name ${EVENT_BUS_NAME} --rule ${EVENT_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" 2>&1
+        aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --event-bus-name ${EVENT_BUS_NAME} --rule ${EVENT_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" 2>&1
         EVENT_RULE_NAME=${EVENT_RULE}
         EVENT_RULE_BUS=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .EventBusName' "${TMP}/${AWS_EVENTS_RULES}_full.json")
         EVENT_RULE_SCHEDULE=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .ScheduleExpression' "${TMP}/${AWS_EVENTS_RULES}_full.json")
@@ -545,11 +545,11 @@ then
         EVENT_RULE_STATE=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .State' "${TMP}/${AWS_EVENTS_RULES}_full.json")
         EVENT_RULE_DESCRIPTION=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .Description' "${TMP}/${AWS_EVENTS_RULES}_full.json")
         inf "    Event rule: ${LIME}${EVENT_RULE_NAME}${CYAN}, of this bus: ${DARK_GREEN}${EVENT_BUS_NAME}${CYAN}, scheduled on: ${BROWN}\"${EVENT_RULE_SCHEDULE}\""
-        if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" ] && [ ! -z $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" | head -n1) ]
+        if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" ] && [ ! -z $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" | head -n1) ]
         then
-          for EVENT_TARGET_ARN in $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json" | sort -u)
+          for EVENT_TARGET_ARN in $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" | sort -u)
           do
-            for EVENT_TARGET_ID in $(jq -r --arg event_target_arn ${EVENT_TARGET_ARN} '.Targets[] | select(.Arn == $event_target_arn) | .Id' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_full.json")
+            for EVENT_TARGET_ID in $(jq -r --arg event_target_arn ${EVENT_TARGET_ARN} '.Targets[] | select(.Arn == $event_target_arn) | .Id' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json")
             do
               inf "      to target Arn: ${GREEN}${EVENT_TARGET_ARN}"
               if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]

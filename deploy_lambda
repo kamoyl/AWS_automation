@@ -66,6 +66,7 @@ fi
 inf "    ${MAGENTA}Checking if ${YELLOW}${SECURITY_GROUP_LAMBDA_NAME}${MAGENTA} has proper ingress configuration"
 for SOURCE_NETWORK in ${SOURCE_NETWORKS[*]}
 do
+  (
   SECURITY_GROUP_INGRESS_SOURCE_NETWORK=$(jq -r --arg source_network ${SOURCE_NETWORK} '.SecurityGroups[].IpPermissions[].IpRanges[] | select(.CidrIp | startswith($source_network)) | .CidrIp' "${TMP}/${AWS_SECURITY_GROUPS}_full.json")
   if [ -z ${SECURITY_GROUP_INGRESS_SOURCE_NETWORK} ]
   then
@@ -73,6 +74,7 @@ do
   else
     inf "      Source network: ${LIME}${SOURCE_NETWORK}${CYAN} has already been added to security group: ${YELLOW}${SECURITY_GROUP_LAMBDA_NAME}"
   fi
+  ) &
 done
 if [ ! -z ${EXTERNAL_INET_IP} ]
 then
@@ -81,7 +83,7 @@ then
     aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${EXTERNAL_INET_IP}/32"
   fi
 fi
-
+wait
 #AWS LAMBDA: security groups
 END_DEPLOY_TIME=$(date +%s.%4N)
 DEPLOY_TIME=$(echo "scale=4; x=(${END_DEPLOY_TIME} - ${START_DEPLOY_TIME}); if(x<1) print 0; x" | bc)
@@ -112,12 +114,13 @@ do
   IFS=$'\n'
   for EVENT_SCHEDULE in $(grep ^${LAMBDA_SCRIPT} "${SCRIPTS_HOME}/lambda_functions/lambda_events.config" | awk -F\~ '{print $2}')
   do
-    #EVENT_BRIDGE_RULE="${AWS_LAMBDA_NAME}_rule"
-    EVENT_BRIDGE_RULE="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_rule"
+    EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_rule"
+    EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_event"
     RANDOM_ID_GEN=$(cat /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
     EVENT_TARGET_ID="Id=${RANDOM_ID_GEN},Arn=${EC2_LAMBDA_SCRIPT_ARN}"
-    events_create_cron_rule ${EVENT_BRIDGE_RULE} "${EVENT_SCHEDULE}"
-    events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE}
+    events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
+    lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
+    events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
   done
 
   if [[ ${RUN_SCRIPT} == yes ]]

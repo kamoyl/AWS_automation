@@ -94,6 +94,21 @@ And also:
 
 * __* slow change to separation error logs from output files__
 
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 7 Jan 2021 21:26:25 +0100
+    
+    * added permissions and trust to events for run lambda function
+    
+    * corrected output file which overwrites event rules
+    
+
+* __Changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 6 Jan 2021 16:18:50 +0100
+    
+    
+
+* __* slow change to separation error logs from output files__
+
     [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 6 Jan 2021 15:59:12 +0100
     
     

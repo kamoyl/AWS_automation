@@ -7,7 +7,6 @@ It works both: in hybrid clouds, and in public one either (I tested it against [
 
 Scripts takes care for permissions, relations (to entities) and support error handling; the funniest is that from the scripts and CLI you may collect much more information then AWS console...
 
-
 Which also means, and it is nice advere effect, that running just info - it collects all information about current env of an AccountAD - with all extra created policies, roles, or other entities, and lots more that that - the most interested it is when run aws_info script against just created CloudGuru sandbox :)
 
 ## prerequisites:
@@ -93,6 +92,40 @@ And also:
 - *[slack emoji](https://www.webfx.com/tools/emoji-cheat-sheet)*
 - *[markdown guide](https://www.markdownguide.org/basic-syntax)*
 
+* __* slow change to separation error logs from output files__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 6 Jan 2021 15:59:12 +0100
+    
+    
+
+* __* added slack notification to deployment of lambda, target and event rule__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 6 Jan 2021 14:14:22 +0100
+    
+    * few small changes
+    
+
+* __* separated some output files from error files when output is redirected__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 5 Jan 2021 16:39:25 +0100
+    
+    * added lambda proper deployment slack notification
+    
+
+* __Changed slack proxy parameters to array due to missunderstanding of dashes in variable__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Mon, 4 Jan 2021 15:29:16 +0100
+    
+    corrected IFS when slack is called - due to improper caret
+    
+
+* __Changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Sat, 12 Dec 2020 21:23:12 +0100
+    
+    * updated README
+    
+
 * __Small notification change__
 
     [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 11 Dec 2020 16:15:20 +0100
@@ -124,6 +157,18 @@ And also:
     
     * in some cases there are unremovable relation to entities - which cannot - due
     to permissions - be removed - error handling
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 10 Dec 2020 16:40:52 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 10 Dec 2020 12:30:24 +0100
+    
     
 
 * __Changelog__

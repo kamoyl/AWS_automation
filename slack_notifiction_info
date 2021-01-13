@@ -5,6 +5,7 @@ then
   debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}')${YELLOW} ]"
 fi
 
+COLLECTEDIFS=${IFS}
 IFS=${ORIGIFS}
 
 SLACK_HEADER="
@@ -33,3 +34,4 @@ SLACK_FOOTER="
 
 echo "curl ${SLACK_PROXY_CONTROL[*]} -v -X POST --data \"${SLACK_HEADER}${SLACK_INSTANCES}${SLACK_VOLS}${SLACK_AMIS}${SLACK_FOOTER}\" ${SLACK_WEB_HOOK}" > "${TMP}/${AWS_INSTANCES_DETAILS}_slack.in"
 source "${TMP}/${AWS_INSTANCES_DETAILS}_slack.in" > "${LOG}/${AWS_INSTANCES_DETAILS}_slack.log" 2>&1
+IFS=${COLLECTEDIFS}

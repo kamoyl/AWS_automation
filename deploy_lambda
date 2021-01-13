@@ -95,13 +95,22 @@ if [ -s "${TMP}/${AWS_ROLES}_${AWS_EC2_LAMBDA_ROLE}_creation.json" ]
 then
   export EC2_LAMBDA_ROLE_ARN=$(jq -r '.Role.Arn' "${TMP}/${AWS_ROLES}_${AWS_EC2_LAMBDA_ROLE}_creation.json")
 fi
-AWS_LAMBDA_SCRIPT_NAMES=($(awk -F\~ '{print $1}' "${SCRIPTS_HOME}/lambda_functions/lambda_events.config" | grep -v "^#"))
-for LAMBDA_SCRIPT in ${AWS_LAMBDA_SCRIPT_NAMES[*]}
+
+IFS=${NEWIFS}
+for LAMBDA_SCRIPT_LINE in $(cat "${SCRIPTS_HOME}/lambda_functions/lambda_events.config" | grep -v "^#")
 do
-  AWS_LAMBDA_NAME="${AWS_COMMON_NAME}_$(echo ${LAMBDA_SCRIPT} | awk -F\. '{print $1}')_lambda"
-  AWS_HANDLER_FUNCTION_NAME="$(echo ${LAMBDA_SCRIPT} | awk -F\. '{print $1}')_handler"
+  LAMBDA_SCRIPT=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $1}')
+  LAMBDA_SCRIPT_NAME=$(echo ${LAMBDA_SCRIPT} | awk -F\. '{print $1}')
+  SHELL_SCRIPT=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $2}')
+  SHELL_SCRIPT_NAME=$(echo ${SHELL_SCRIPT} | awk -F\. '{print $1}')
+  SHELL_SCRIPT_CONTENT=$(cat "${SCRIPTS_HOME}/lambda_functions/${SHELL_SCRIPT}")
+  EVENT_SCHEDULE=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $3}')
+  EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_rule"
+  EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_event"
+  AWS_LAMBDA_NAME="${AWS_COMMON_NAME}_${SHELL_SCRIPT_NAME}_${LAMBDA_SCRIPT_NAME}"
+  AWS_HANDLER_FUNCTION_NAME="${LAMBDA_SCRIPT_NAME}_handler"
   AWS_LAMBDA_HANDLER="${AWS_LAMBDA_NAME}.${AWS_HANDLER_FUNCTION_NAME}"
-  export SHELL_SCRIPT="$(echo "$(cat ${SCRIPTS_HOME}/lambda_functions/$(echo ${LAMBDA_SCRIPT} | awk -F\. '{print $1}').bash)")"
+  export SHELL_SCRIPT_CONTENT
   export KEY_NAME
   export AWS_EC2_INSTANCES_PROFILE
   export AWS_HANDLER_FUNCTION_NAME
@@ -111,22 +120,15 @@ do
   export REGION
   export SECURITY_GROUP_ID
   lambda_function_deployment ${AWS_LAMBDA_NAME} ${AWS_HANDLER_FUNCTION_NAME} 
-  IFS=$'\n'
-  for EVENT_SCHEDULE in $(grep ^${LAMBDA_SCRIPT} "${SCRIPTS_HOME}/lambda_functions/lambda_events.config" | awk -F\~ '{print $2}')
-  do
-    EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_rule"
-    EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_event"
-    RANDOM_ID_GEN=$(cat /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
-    EVENT_TARGET_ID="Id=${RANDOM_ID_GEN},Arn=${EC2_LAMBDA_SCRIPT_ARN}"
-    events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
-    lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
-    events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
-  done
-
+  RANDOM_ID_GEN=$(cat /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
+  EVENT_TARGET_ID="Id=${RANDOM_ID_GEN},Arn=${EC2_LAMBDA_SCRIPT_ARN}"
+  events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
+  lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
+  events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
   if [[ ${RUN_SCRIPT} == yes ]]
   then
     inf "  Invoking Lambda function ${YELLOW}${AWS_LAMBDA_NAME}${RED} (when event bridge will be configured properly this will be removed)"
-    #logs from CloudWatch
+    #ToDo: logs from CloudWatch
     #aws ${AWS_PROFILE_USE_CHECK[*]} logs get-log-events --log-group-name /aws/lambda/${AWS_LAMBDA_NAME} --log-stream-name $(cat out) --limit 5
     aws ${AWS_PROFILE_USE_CHECK[*]} lambda invoke --function-name ${AWS_LAMBDA_NAME} "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}_full.json" --log-type Tail --query 'LogResult' --output text |  base64 -d > "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_NAME}.log" 2>&1
     ERROR_CODE="$?"
@@ -147,8 +149,9 @@ do
     fi
     is_instance_up ${INSTANCE_ID_LAMBDA}
     ##AWS Lambda invoking
-    fi
+  fi
 done
+IFS=${ORIGIFS}
 
 END_DEPLOY_LAMBDA_TIME=$(date +%s.%4N)
 DEPLOY_LAMBDA_TIME=$(echo "scale=4; x=(${END_DEPLOY_LAMBDA_TIME} - ${START_DEPLOY_LAMBDA_TIME}); if(x<1) print 0; x" | bc)

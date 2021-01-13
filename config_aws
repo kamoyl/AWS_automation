@@ -31,6 +31,7 @@ fi
 if [[ ${HOSTNAME_FQDN} =~ eu-west-1.compute.internal ]]
 then
   AWS_ZONE="Y"
+  AWS_ZONE_INFO="YES"
   export YOUR_IP="${DEFAULT_INET_IP}"
   AWS_IP="${YOUR_IP}"
   PROXYS=""
@@ -38,6 +39,7 @@ then
   debug "You are currently connected from ${BROWN}AWS: ${LIME}${YOUR_IP}${BLUE}, instanceID: ${YELLOW}${LOCAL_EC2_INSTANCE}"
 else
   AWS_ZONE="N"
+  AWS_ZONE_INFO="NO"
 fi
 
 if [ -z ${PROXYS} ]
@@ -216,8 +218,9 @@ aws_key_create()
   if [ -s "${HOME}/.ssh/id_rsa" ]
   then
     inf "  I found id_rsa key of current user: ${YELLOW}${USER}${CYAN}, making fingerprint"
-    ssh-keygen -ef "${HOME}/.ssh/id_rsa" -m PEM | openssl rsa -RSAPublicKey_in -outform DER > "${TMP}/${AWS_EC2_KEYPAIRS}_current_user_DER.output" 2>"${LOG}/${AWS_EC2_KEYPAIRS}_current_user_DER.log"
-    CURRENT_USER_FINGERPRINT=$(tail -n +2 "${TMP}/${AWS_EC2_KEYPAIRS}_current_user_DER.output" | openssl md5 -c | awk '{print $NF}')
+    #ssh-keygen -ef "${HOME}/.ssh/id_rsa" -m PEM | openssl rsa -RSAPublicKey_in -outform DER > "${TMP}/${AWS_EC2_KEYPAIRS}_current_user_DER.output" 2>"${LOG}/${AWS_EC2_KEYPAIRS}_current_user_DER.log"
+    #CURRENT_USER_FINGERPRINT=$(tail -n +2 "${TMP}/${AWS_EC2_KEYPAIRS}_current_user_DER.output" | openssl md5 -c | awk '{print $NF}')
+    CURRENT_USER_FINGERPRINT=$(ssh-keygen -f ${HOME}/.ssh/id_rsa.pub -e -m PKCS8 | openssl pkey -pubin -outform DER | openssl md5 -c)
     inf "    Checking if current user: ${YELLOW}${USER}${CYAN} fingerprint exists in AWS EC2"
     if [ -s "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" ]
     then
@@ -246,7 +249,13 @@ aws_key_create()
       aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-key-pairs > "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" 2>"${LOG}/${AWS_EC2_KEYPAIRS}.log" &
     else
       export KEY_NAME=$(jq -r --arg KeyFingerprint ${CURRENT_USER_FINGERPRINT} '.KeyPairs[] | select(.KeyFingerprint == $KeyFingerprint) | .KeyName' "${TMP}/${AWS_EC2_KEYPAIRS}_full.json")
-      inf "      Current user: ${YELLOW}${USER}${CYAN} exists in AWS EC2 with key name: ${BROWN}${KEY_NAME}"
+      AMOUNT_OF_IDENTICAL_KEYS=$(echo "${KEY_NAME}" | wc -l)
+      if [ ${AMOUNT_OF_IDENTICAL_KEYS} -gt 1 ]
+      then
+        inf "      Current user: ${YELLOW}${USER}${CYAN} exists in AWS EC2 with key name: ${BROWN}${KEY_NAME}${CYAN} (and in ${WINE}${AMOUNT_OF_IDENTICAL_KEYS}${CYAN} times)"
+      else
+        inf "      Current user: ${YELLOW}${USER}${CYAN} exists in AWS EC2 with key name: ${BROWN}${KEY_NAME}"
+      fi
     fi
   else
     inf "  I cannot find private key of current user: ${YELLOW}${USER}${CYAN}, creating AWS key pairs"
@@ -684,7 +693,6 @@ aws_snapshot_removal()
     AWS_SNAPSHOT_ID="${1}"
   fi
   aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-snapshots --snapshot-ids ${AWS_SNAPSHOT_ID} > "${TMP}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_full.json" 2>"${LOG}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}.log"
-  #ToDo: error handling
   AWS_SNAPSHOT_ID_CHECK=$(jq -r '.Snapshots[].SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_${AWS_SNAPSHOT_ID}_full.json")
   if [ ! -z ${AWS_SNAPSHOT_ID_CHECK} ]
   then
@@ -842,39 +850,39 @@ lambda_function_deployment()
     AWS_LAMBDA_FUNCTION_NAME="${1}"
     AWS_LAMBDA_HANDLER_NAME="${2}"
   fi
-  inf "Preparing Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
-  cat "${SCRIPTS_HOME}/lambda_functions/${LAMBDA_SCRIPT}" | envsubst > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.py"
-  if [[ ${ZIP_ON} == yes ]]
-  then
-    zip -j -q "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.py"
-  elif [[ ${SP_ON} == yes ]]
-  then
-    7z a "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" "${SCRIPTS_HOME}/${AWS_LAMBDA_FUNCTION_NAME}.py" > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}_compress.output" 2>"${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_compress.log"
-  fi
-  NUMBER=0
-  while [ ${NUMBER} -le 10 ]
-  do
-    sleep 1
-    ProgressBar ${NUMBER} 10
-    NUMBER=$(( ${NUMBER} + 1))
-  done
-  printf '\n'
   LAMBDA_FUNCTION_ARN=$(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg ec2_lambda_function ${AWS_LAMBDA_FUNCTION_NAME} '.Functions[] | select(.FunctionName | startswith($aws_default_name) | not) | select(.FunctionName == $ec2_lambda_function) | .FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
   if [ ! -z ${LAMBDA_FUNCTION_ARN} ]
   then
     warn "  Lambda function: ${BLUE}${AWS_LAMBDA_FUNCTION_NAME}${WINE} already exists"
     EC2_LAMBDA_SCRIPT_ARN=$(jq -r --arg aws_lambda_function_name ${AWS_LAMBDA_FUNCTION_NAME} '.Functions[] | select(.FunctionName == $aws_lambda_function_name) | .FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
   else
-    inf "deploying Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+    inf "Preparing Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+    cat "${SCRIPTS_HOME}/lambda_functions/${LAMBDA_SCRIPT}" | envsubst > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.py"
+    if [[ ${ZIP_ON} == yes ]]
+    then
+      zip -j -q "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.py"
+    elif [[ ${SP_ON} == yes ]]
+    then
+      7z a "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" "${SCRIPTS_HOME}/${AWS_LAMBDA_FUNCTION_NAME}.py" > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}_compress.output" 2>"${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_compress.log"
+    fi
+    NUMBER=0
+    while [ ${NUMBER} -le 10 ]
+    do
+      sleep 1
+      ProgressBar ${NUMBER} 10
+      NUMBER=$(( ${NUMBER} + 1))
+    done
+    printf '\n'
+    inf "  Deploying Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
     aws ${AWS_PROFILE_USE_CHECK[*]} lambda create-function --timeout 15 --function-name ${AWS_LAMBDA_FUNCTION_NAME} --zip-file fileb://"${TMP}/${AWS_LAMBDA_FUNCTION_NAME}.zip" --handler ${AWS_LAMBDA_HANDLER} --runtime python3.8 --role ${EC2_LAMBDA_ROLE_ARN} > "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json" 2>"${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}.log"
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -ne 0 ]
     then
-      error "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${RED} cannot be deployed"
-      debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}.log"
+      error "    Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${RED} cannot be deployed"
+      debug "      LOG FILE: ${YELLOW}${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}.log"
       ENCODED_ERROR_MESSAGE=$(grep "\[ERROR\]" "${LOG}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}.log" | awk -F"failure message:" '{print $2}')
       DECODED_ERROR_MESSAGE=$(aws ${AWS_PROFILE_USE_CHECK[*]} sts decode-authorization-message --output text --encoded-message ${ENCODED_ERROR_MESSAGE} | jq -r)
-      error "      ${DECODED_ERROR_MESSAGE}"
+      error "        ${DECODED_ERROR_MESSAGE}"
       failed
     else
       while [[ $(aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-function --function-name ${AWS_LAMBDA_FUNCTION_NAME} | jq -r '.Configuration.State') == "Pending" ]]
@@ -887,9 +895,9 @@ lambda_function_deployment()
         done
         printf '\n'
       done
-      inf "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${CYAN} deployed properly"
+      inf "    Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${CYAN} deployed properly"
       EC2_LAMBDA_SCRIPT_ARN=$(jq -r '.FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json")
-      debug "    Slack notification...."
+      debug "      Slack notification...."
       source "${SCRIPTS_HOME}/slack_notifiction_lambda"
     fi
   fi
@@ -907,7 +915,6 @@ aws_list-entities-for-policy()
     AWS_POLICY_NAME=$(echo ${AWS_POLICY_ARN} | awk -F\: '{print $6}' | awk -F\/ '{print $NF}')
   fi
   aws ${AWS_PROFILE_USE_CHECK[*]} iam list-entities-for-policy --policy-arn "${AWS_POLICY_ARN}" > "${TMP}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}_full.json" 2>"${LOG}/${AWS_POLICY_ENTITIES}_${AWS_POLICY_NAME}.log"
-  #ToDo: error handling
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
@@ -1040,7 +1047,7 @@ aws_list-attached-role-policies()
   else
     AWS_IAM_ROLE_NAME=${1}
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-attached-role-policies --role-name ${AWS_IAM_ROLE_NAME} > "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}_full.json" 2>"${LOGP}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}.log"
+  aws ${AWS_PROFILE_USE_CHECK[*]} iam list-attached-role-policies --role-name ${AWS_IAM_ROLE_NAME} > "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}_full.json" 2>"${LOG}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
@@ -1645,12 +1652,11 @@ events_create_cron_rule()
     EVENT_BRIDGE_RULE_NAME="${1}"
     EVENT_BRIDGE_RULE_NAME_CRON="${2}"
   fi
-  #ToDo: check it out if event rule already exist or not, and then add
-  inf "    Adding event rule:  ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} with cron: ${BROWN}\"${EVENT_BRIDGE_RULE_NAME_CRON}\""
   EVENT_BRIDGE_RULE_NAME_CHECK=$(jq -r --arg event_bridge_rule_name ${EVENT_BRIDGE_RULE_NAME} '.Rules[] | select(.Name == $event_bridge_rule_name) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_full.json")
   if [ -z ${EVENT_BRIDGE_RULE_NAME_CHECK} ]
   then
-    aws ${AWS_PROFILE_USE_CHECK[*]} events put-rule --schedule-expression "cron${EVENT_BRIDGE_RULE_NAME_CRON}" --name ${EVENT_BRIDGE_RULE_NAME} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json" 2>&1
+    inf "    Adding event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} with cron: ${BROWN}\"${EVENT_BRIDGE_RULE_NAME_CRON}\""
+    aws ${AWS_PROFILE_USE_CHECK[*]} events put-rule --schedule-expression "cron${EVENT_BRIDGE_RULE_NAME_CRON}" --name ${EVENT_BRIDGE_RULE_NAME} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}.log"
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -eq 0 ]
     then
@@ -1659,11 +1665,11 @@ events_create_cron_rule()
       source "${SCRIPTS_HOME}/slack_notifiction_event_rule"
     else
       error "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${RED} failed to add"
-      debug "        LOG FILE: ${YELLOW}${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json"
+      debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}.log"
       failed
     fi
   else
-    inf "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} already existed"
+    inf "    ${WINE}Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${WINE} already exists"
   fi
 }
 
@@ -1681,21 +1687,45 @@ lambda_add_permission_to_trust_principal()
     EVENT_BRIDGE_EVENT_NAME=${2}
     SERVICE_PRINCIPAL=${3}
     EVENT_BRIDGE_RULE_NAME=${4}
+    PERMISSIONS_ACTION="lambda:InvokeFunction"
   fi
-  #ToDo: check if such permissions are already assigned
-  aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-policy --function-name ${AWS_LAMBDA_FUNCTION_NAME} --output text 2>"${LOG}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log" | jq -r > "${TMP}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json"
-  inf "      Trust ${DARK_GREEN}${SERVICE_PRINCIPAL}${CYAN} and scope permissions to the rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
-  EVENT_BRIDGE_RULE_ARN=$(jq -r '.RuleArn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json")
-  aws ${AWS_PROFILE_USE_CHECK[*]} lambda add-permission --function-name ${AWS_LAMBDA_FUNCTION_NAME} --statement-id ${EVENT_BRIDGE_EVENT_NAME} --action 'lambda:InvokeFunction' --principal ${SERVICE_PRINCIPAL} --source-arn ${EVENT_BRIDGE_RULE_ARN} > "${TMP}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.json" 2> "${LOG}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
-  ERROR_CODE="$?"
-  if [ ${ERROR_CODE} -eq 0 ]
+  aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-policy --function-name ${AWS_LAMBDA_FUNCTION_NAME} --output text 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust.log" | jq -r > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json" 2>>"${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
+
+  if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json" ]
   then
-    inf "        Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trusts ${DARK_GREEN}${SERVICE_PRINCIPAL}"
+    LAMBDA_FUNCTION_ARN_FROM_EVENT=$(jq -r '.Statement[].Resource' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
+    SID_FROM_EVENT=$(jq -r '.Statement[].Sid' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
+    EVENT_BRIDGE_RULE_ARN=$(jq -r '.Statement[].Condition.ArnLike."AWS:SourceArn"' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
+    PERMISSION_EVENTBRIDGE_LAMBDA=$(jq -r '.Statement[].Action' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
+    if [[ ${EVENT_BRIDGE_EVENT_NAME} == ${SID_FROM_EVENT} ]]
+    then
+      if [[ ${PERMISSIONS_ACTION} == ${PERMISSION_EVENTBRIDGE_LAMBDA} ]]
+      then
+        inf "      ${WINE}Appropriate permissions and trust are set properly already"
+      else
+        warn "      ${RED}Trust has been set but with different permissions... it might not work finally"
+      fi
+    fi
   else
-    error "        Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trust cannot be set"
-    debug "          LOG FILE: ${YELLOW}${LOG}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
-    error "            $(cat ${LOG}/${EVENT_BRIDGE_RULE_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log)"
-    failed
+    inf "      Adding trust ${DARK_GREEN}${SERVICE_PRINCIPAL}${CYAN} and scope permissions to the rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+    if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json" ]
+    then
+      EVENT_BRIDGE_RULE_ARN=$(jq -r '.RuleArn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json")
+    elif [ -s "${TMP}/${AWS_EVENTS_RULES}_full.json" ]
+    then
+      EVENT_BRIDGE_RULE_ARN=$(jq -r --arg event_bridge_rule_name ${EVENT_BRIDGE_RULE_NAME} '.Rules[] | select(.Name == $event_bridge_rule_name) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+    fi
+    aws ${AWS_PROFILE_USE_CHECK[*]} lambda add-permission --function-name ${AWS_LAMBDA_FUNCTION_NAME} --statement-id ${EVENT_BRIDGE_EVENT_NAME} --action "${PERMISSIONS_ACTION}" --principal ${SERVICE_PRINCIPAL} --source-arn ${EVENT_BRIDGE_RULE_ARN} > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.json" 2> "${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      inf "        Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trusts ${DARK_GREEN}${SERVICE_PRINCIPAL}"
+    else
+      error "        Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trust cannot be set"
+      debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
+      error "            $(cat ${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log)"
+      failed
+    fi
   fi
 }
 
@@ -1710,24 +1740,24 @@ events_add_target_to_rule()
     EVENT_BRIDGE_TARGET_ID=${1}
     EVENT_BRIDGE_RULE_NAME=${2}
   fi
-  inf "      Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} will be added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
   EVENT_BRIDGE_TARGET_ARN_CHECK=$(aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --rule ${EVENT_BRIDGE_RULE_NAME} | jq -r --arg arn ${EC2_LAMBDA_SCRIPT_ARN} '.Targets[] | select(.Arn == $arn) .Arn' | head -n1)
   if [ -z ${EVENT_BRIDGE_TARGET_ARN_CHECK} ]
   then
+    inf "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} will be added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
     aws ${AWS_PROFILE_USE_CHECK[*]} events put-targets --rule ${EVENT_BRIDGE_RULE_NAME} --targets ${EVENT_BRIDGE_TARGET_ID} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -eq 0 ]
     then
-      inf "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} added properly"
-      debug "          Slack notification...."
+      inf "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} added properly"
+      debug "            Slack notification...."
       source "${SCRIPTS_HOME}/slack_notifiction_lambda_target"
     else
-      error "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't added"
-      debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"
+      error "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't added"
+      debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"
       failed
     fi
   else
-    inf "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} is already added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+    inf "        ${WINE}Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${WINE} is already added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
   fi
 }
 

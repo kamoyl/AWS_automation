@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-ORIGIFS=${IFS}
-#debug "IFS=$(cat -etv <<<"$IFS")"
-
 export TERM="xterm-256color"
 BLACK=$(tput setaf 0)
 RED=$(tput setaf 1)
@@ -26,6 +23,9 @@ BROWN=$(echo -e "\x1b[38;2;210;100;000m")
 DARK_GREEN=$(echo -e "\x1b[38;2;50;200;100m")
 LIGHT_BLUE=$(echo -e "\x1b[38;2;50;200;240m")
 LIGHT_YELLOW=$(echo -e "\x1b[38;2;250;250;0m")
+
+ORIGIFS=${IFS}
+NEWIFS=$'\n'
 
 PATH_PARENT_SCRIPTS=$(dirname ${SCRIPTS_HOME})
 PATH_GRANDPARENT_SCRIPTS=$(dirname ${PATH_PARENT_SCRIPTS})
@@ -218,7 +218,7 @@ if ! type grepcidr > /dev/null 2>&1
 then
   error "There is no \"grepcidr\" command, exiting"
 fi
-if ! type jq > /dev/null 2>&1
+if ! type jq > /dev/null 2>&1 && [[ $0 =~ aws ]]
 then
   error "There is no \"jq\" command, exiting"
   failed

@@ -5,6 +5,7 @@ then
   debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}')${YELLOW} ]"
 fi
 
+COLLECTEDIFS=${IFS}
 IFS=${ORIGIFS}
 
 SLACK_PAYLOAD="
@@ -25,3 +26,5 @@ SLACK_PAYLOAD="
 
 echo "curl ${SLACK_PROXY_CONTROL[*]} -v -X POST --data \"${SLACK_PAYLOAD}\" ${SLACK_WEB_HOOK}" > "${TMP}/${RANDOM_ID_GEN}_slack_eventbridge_target.in"
 source "${TMP}/${RANDOM_ID_GEN}_slack_eventbridge_target.in" > "${LOG}/${RANDOM_ID_GEN}_slack_eventbridge_target.log" 2>&1
+
+IFS=${COLLECTEDIFS}

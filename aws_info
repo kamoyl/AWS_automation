@@ -245,7 +245,7 @@ then
       inf "        Private IP: ${LIME}${AWS_INSTANCE_IP}"
       if [ -z ${AWS_INSTANCE_PUBLIC_IP} ] || [[ ${AWS_INSTANCE_PUBLIC_IP} == "null" ]]
       then
-        inf "        Public IP: ${GREEN}${AWS_INSTANCE_IP}"
+        inf "        Public  IP: ${GREEN}${AWS_INSTANCE_IP}"
       fi
     elif [[ ${AWS_INSTANCE_STATE} == "running" ]]
     then
@@ -253,7 +253,7 @@ then
       inf "        Private IP: ${LIME}${AWS_INSTANCE_IP}"
       if [ -z ${AWS_INSTANCE_PUBLIC_IP} ] || [[ ${AWS_INSTANCE_PUBLIC_IP} == "null" ]]
       then
-        inf "        Public IP: ${GREEN}${AWS_INSTANCE_IP}"
+        inf "        Public  IP: ${GREEN}${AWS_INSTANCE_IP}"
       fi
     else
       inf "      state: ${WINE}${AWS_INSTANCE_STATE^^}"
@@ -263,9 +263,9 @@ then
       AWS_INSTANCE_VOL_E2_SNAP=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Volumes[] | select(.Attachments[].InstanceId == $aws_instance_id) | .SnapshotId' "${TMP}/${AWS_VOLS_DETAILS}_full.json")
       inf "          device mapping: ${YELLOW}${AWS_INSTANCE_VOL}"
       inf "            E2 snapshot: ${BROWN}${AWS_INSTANCE_VOL_E2_SNAP}"
-      IFS=$'\n'
       if [ -s "${TMP}/${AWS_SNAPS_DETAILS}_full.json" ]
       then
+        IFS=${NEWIFS}
         for AWS_S3_SNAPSHOT_VOL_ID in $(jq -r --arg aws_instance_vol ${AWS_INSTANCE_VOL} '.Snapshots[] | select(.VolumeId == $aws_instance_vol) | .SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
         do
           AWS_S3_SNAPSHOT_DESCRIPTION=$(jq -r --arg aws_s3_snapshot_id ${AWS_S3_SNAPSHOT_VOL_ID} '.Snapshots[] | select(.SnapshotId == $aws_s3_snapshot_id) | .Description' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
@@ -741,7 +741,7 @@ else
   inf "  current month (${BROWN}${CURRENT_MONTH}${CYAN}): ${LIGHT_YELLOW}${CURRENT_MONTH_COSTS} USD"
   if [[ ${VERBOSE} == "yes" ]]
   then
-    IFS=$'\n'
+    IFS=${NEWIFS}
     inf "    per services:"
     for AWS_SERVICE_COST_LINE in $(jq -r '.ResultsByTime[].Groups[] | .Keys[] + "~" + .Metrics.NetAmortizedCost.Amount' "${TMP}/${AWS_COSTS_DETAILS}_current_month_full.json" | grep -v "~0.00" | grep -v "~0$")
     do

@@ -113,3 +113,393 @@ Each script without any parameter will throw help, but:
 ### other
 - *[slack emoji](https://www.webfx.com/tools/emoji-cheat-sheet)*
 - *[markdown guide](https://www.markdownguide.org/basic-syntax)*
+
+* __* lambda name has been changed to be used more then one - accordingly to destination scripts__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 13 Jan 2021 13:13:45 +0100
+    
+    * configuration table is now three columns where two of them are lambda pythin
+    script and bash script runs by it
+    
+    * there were lots of weirdissues related to IFS - which all of them is globally
+    corrected now
+    
+    * more and more redirection to logs and temporary files accordingly if it is
+    about output or errors
+    
+    * corrected OpenSSH fingerprint comparison to AWS SSH2 fingerptint - to NOT to
+    create endlesly keys if they exists already
+    
+    * added ToDo into README and update it
+    
+    * checking if: ** event is already created, ** if permissions from EventBridge
+    to Lambda are appropriately assigned and created, ** event name is uniq, ** if
+    event rule is already created, ** if targets exists
+    
+    * changed orger of creating zip package for lambda to do it ONLY after creating
+    lambda
+    
+    * updated README, and Changelog
+    
+    * some small changes and cleaning
+    
+
+* __Changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 7 Jan 2021 21:27:58 +0100
+    
+    
+
+* __* slow change to separation error logs from output files__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 7 Jan 2021 21:26:25 +0100
+    
+    * added permissions and trust to events for run lambda function
+    
+    * corrected output file which overwrites event rules
+    
+
+* __* slow change to separation error logs from output files__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 7 Jan 2021 21:21:01 +0100
+    
+    
+
+* __Changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 6 Jan 2021 16:18:50 +0100
+    
+    
+
+* __* slow change to separation error logs from output files__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 6 Jan 2021 15:59:12 +0100
+    
+    
+
+* __* added slack notification to deployment of lambda, target and event rule__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 6 Jan 2021 14:14:22 +0100
+    
+    * few small changes
+    
+
+* __* separated some output files from error files when output is redirected__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 5 Jan 2021 16:39:25 +0100
+    
+    * added lambda proper deployment slack notification
+    
+
+* __Changed slack proxy parameters to array due to missunderstanding of dashes in variable__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Mon, 4 Jan 2021 15:29:16 +0100
+    
+    corrected IFS when slack is called - due to improper caret
+    
+
+* __Changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Sat, 12 Dec 2020 21:23:12 +0100
+    
+    * updated README
+    
+
+* __Small notification change__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 11 Dec 2020 16:15:20 +0100
+    
+    
+
+* __* corrected issue with inapropriately checking subnets without tags__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 11 Dec 2020 16:14:18 +0100
+    
+    * due to TIME needed to initiate an instance, and then assigning profile - I
+    had to add a progress bar UNTIL instance will be running
+    
+
+* __few correction and few checkes to do smoothly through__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 10 Dec 2020 21:37:36 +0100
+    
+    
+
+* __Lots of changes__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 10 Dec 2020 17:08:50 +0100
+    
+    * checking if permissions are in place, if not - some tasks cannot be finished
+    but error must be handled
+    
+    * some tasks is not possible to do, errror handling added
+    
+    * in some cases there are unremovable relation to entities - which cannot - due
+    to permissions - be removed - error handling
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 10 Dec 2020 16:40:52 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 10 Dec 2020 12:30:24 +0100
+    
+    
+
+* __Changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 16:50:57 +0100
+    
+    
+
+* __* all scripts are prepared now to be run outside AWS instance, and from it either - it means that cleaning is safe (current instance will be untouched, so as policied, secure groups, etc), profile is taken properly frmo inside EC2 instance and from autiside__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 16:49:09 +0100
+    
+    * added lifecycle to S3 buckets
+    
+    * optimize a bit - run in parallel with shortened time about half
+    
+
+* __* updated gitignore__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 10:52:52 +0100
+    
+    * added some - useful I think - scripts for EC2 instance to deploy - it is even
+    easy to do it by lambda when creating an instance of by deploying a script when
+    deploying instance on the fly
+    
+    * added: zram configuration (useful with small instances), and slack
+    notification WHEN vm is up, and when it is going down - based on systemd
+    
+
+* __* adding changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 10:12:23 +0100
+    
+    
+
+* __* small correction of static value when sending slack__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 9 Dec 2020 10:11:08 +0100
+    
+    
+
+* __* added checking of S3 buckets features like secure access instead of apply it each time__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 8 Dec 2020 16:39:53 +0100
+    
+    * Lambda and Evens are now taken from one filke, with schedule, so it shhould
+    be easier then it was
+    
+
+* __* lambda is migrated to bash function, which let&#39;s now deploy more of them, related to evens by name__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Mon, 7 Dec 2020 16:57:07 +0100
+    
+    
+
+* __* Added changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 16:11:24 +0100
+    
+    
+
+* __* Added changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 16:09:57 +0100
+    
+    
+
+* __* eventbridge attached - it is deployed right after lambda, and with lambda related__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 16:04:15 +0100
+    
+    * few correction to lambda deployment
+    
+    * changed picking up lambda scripts - now each one in lambda_functions with .py
+    extension will be picked up, and based on it, appropriate event will be created
+    
+
+* __* added checking mandatory aws cli__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 14:38:22 +0100
+    
+    * aws cli version is also checked
+    
+    * added an aws cli installation link to README
+    
+
+* __Add scripts - init of a branch__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 4 Dec 2020 12:40:51 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 2 Dec 2020 13:10:55 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Mon, 16 Nov 2020 12:14:11 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Mon, 16 Nov 2020 10:29:22 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 13 Nov 2020 10:43:50 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 16:38:02 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 16:36:41 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 14:22:06 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 14:21:31 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 11:55:12 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 11:50:45 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 11:36:15 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 10:13:56 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 09:42:19 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 12 Nov 2020 09:26:48 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 11 Nov 2020 13:07:38 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 11 Nov 2020 09:32:03 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 11 Nov 2020 09:24:59 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 11 Nov 2020 09:24:42 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 10 Nov 2020 12:41:11 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 10 Nov 2020 12:35:31 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 6 Nov 2020 13:56:52 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 15:47:50 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 15:42:08 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 12:33:53 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 12:25:49 +0100
+    
+    
+
+* __Update README.md__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 12:18:15 +0100
+    
+    
+
+* __Initial commit__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 5 Nov 2020 12:13:10 +0100
+    
+    
+    
+

@@ -215,12 +215,14 @@ then
         aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
         aws_S3_bucket_encryption "${S3_BUCKET}"
         aws_S3_bucket_lifecycle "${S3_BUCKET}"
+        aws_S3_bucket_logging "${S3_BUCKET}"
       else
         warn "  S3 bucket: ${YELLOW}${S3_BUCKET}${WINE} doesn't exist"
         aws_S3_bucket_create "${S3_BUCKET}"
         aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
         aws_S3_bucket_encryption "${S3_BUCKET}"
         aws_S3_bucket_lifecycle "${S3_BUCKET}"
+        aws_S3_bucket_logging "${S3_BUCKET}"
       fi
     ) &
   done
@@ -232,6 +234,7 @@ else
     aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
     aws_S3_bucket_encryption "${S3_BUCKET}"
     aws_S3_bucket_lifecycle "${S3_BUCKET}"
+    aws_S3_bucket_logging "${S3_BUCKET}"
   done
 fi
 #ToDo: KMS add a key to encrypt S3 buckets...

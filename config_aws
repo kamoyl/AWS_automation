@@ -1397,7 +1397,7 @@ aws_S3_bucket_encryption()
   if [ ${ERROR_CODE} -ne 0 ]
   then
     inf "      S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) was created without ${DARK_GREEN}encryption${CYAN}, setting it now..."
-    aws ${AWS_PROFILE_USE_CHECK[*]} s3api put-bucket-encryption --bucket ${S3_BUCKET_NAME} --server-side-encryption-configuration '{"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}' ${AWS_PROFILE_USE_CHECK[*]}
+    aws ${AWS_PROFILE_USE_CHECK[*]} s3api put-bucket-encryption --bucket ${S3_BUCKET_NAME} --server-side-encryption-configuration '{"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}'
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -ne 0 ]
     then
@@ -1500,6 +1500,52 @@ aws_S3_bucket_lifecycle()
     inf "        S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) ${DARK_GREEN}lifesycle${CYAN} is set"
   fi
 }
+
+aws_S3_bucket_logging()
+{
+  if [ $# -ne 1 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs one parameter: ${YELLOW}(1)S3_bucket_name"
+    ERROR_CODE="1"
+    failed
+  else
+    S3_BUCKET_NAME="${1}"
+  fi
+  AWS_S3_BUCKET_LOGGING_CHECK=$(aws ${AWS_PROFILE_USE_CHECK[*]} s3api get-bucket-logging --bucket ${S3_BUCKET_NAME} | jq -r '.LoggingEnabled' | head -n1)
+  if [ -z ${AWS_S3_BUCKET_LOGGING_CHECK} ]
+  then
+    inf "          S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) has logging not enabled, enabling..."
+    aws ${AWS_PROFILE_USE_CHECK[*]} s3api put-bucket-acl --bucket ${S3_BUCKET_NAME} --grant-write URI=http://acs.amazonaws.com/groups/s3/LogDelivery --grant-read-acp URI=http://acs.amazonaws.com/groups/s3/LogDelivery > "${TMP}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging_permissions.json" 2>"${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging_permissions.log"
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -ne 0 ]
+    then
+      error "            S3 bucket ${YELLOW}${S3_BUCKET_NAME}${RED} permissions to logs cannot be set"
+      debug "              LOG FILE: ${YELLOW}${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log"
+      debug "                $(cat "${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log")"
+      failed
+    else
+      inf "            S3 bucket ${YELLOW}${S3_BUCKET_NAME}${CYAN} permissions to logs has been set properly"
+    fi
+    aws ${AWS_PROFILE_USE_CHECK[*]} s3api put-bucket-logging --bucket ${S3_BUCKET_NAME} --bucket-logging-status '{"LoggingEnabled": {"TargetBucket": "'${S3_BUCKET_NAME}'","TargetPrefix": "'${S3_BUCKET_NAME}Logs/'"}}' > "${TMP}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.json" 2>"${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log"
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -ne 0 ]
+    then
+      error "              S3 bucket ${YELLOW}${S3_BUCKET_NAME}${CYAN} logging cannot be set"
+      debug "                LOG FILE: ${YELLOW}${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log"
+      debug "                  $(cat "${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log")"
+      failed
+    else
+      inf "            S3 bucket ${YELLOW}${S3_BUCKET_NAME}${CYAN} logging has been set properly"
+    fi
+  else
+    inf "          S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) has logging enabled"
+  fi
+}
+
+#ToDo: S3 objects locking
+#put-object-lock-configuration
+#aws s3api put-object-lock-configuration --bucket my-bucket-with-object-lock --object-lock-configuration '{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": "COMPLIANCE", "Days": 50 }}}'
+#governance mode 
 
 aws_ec2_security_group_create()
 {

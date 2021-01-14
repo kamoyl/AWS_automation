@@ -83,10 +83,10 @@ Each script without any parameter will throw help, but:
   - [-u]  [optional] - username on remote system which runs commands (if ommited, then "${USER}" is picked up)
   - [-R]  [optional] - run code remotely on just created EC2 instance
   - [-A]  [optional] - AMI_ID         (if ommited, then the newest OWN is picked up)
-                     - example: Red Hat Enterprise Linux 8 (HVM), SSD Volume Type (ami-032e5b6af8a711f30) - for eu-west-1 AZ
-                     - example: Amazon Linux 2 AMI (HVM), SSD Volume Type (ami-0ce1e3f77cd41957e) - for eu-west-1 AZ
-                     - example: CentOS 7 (x86_64) - with Updates HVM (ami-05a178e6f938f2c39) - for eu-west-1 AZ
-                     - example of find: "aws --profile saml ec2 describe-images --filters "Name=description,Values=CentOS 7*" | jq '.Images[].Description'"
+    - example: Red Hat Enterprise Linux 8 (HVM), SSD Volume Type (ami-032e5b6af8a711f30) - for eu-west-1 AZ
+    - example: Amazon Linux 2 AMI (HVM), SSD Volume Type (ami-0ce1e3f77cd41957e) - for eu-west-1 AZ
+    - example: CentOS 7 (x86_64) - with Updates HVM (ami-05a178e6f938f2c39) - for eu-west-1 AZ
+    - example of find: "aws --profile saml ec2 describe-images --filters "Name=description,Values=CentOS 7*" | jq '.Images[].Description'"
   - [-I]  [optional] - INSTANCE_TYPE  (if ommited, then "t3.xlarge" is picked up)
  
 ## AWS extra addons

@@ -55,7 +55,11 @@ The main purpose of this repo is to - using only CLI, and as less as possible ma
   - about own AMIs
   - about working/running instances
   - about volumes
-  - S3 buckets (and their features: lifecycle, encryption, secure access etc)
+  - S3 buckets with their features: l
+    - lifecycle,
+    - encryption,
+    - secure access,
+    - logging (with appropriate permissions)
 - created instances (doesn't matter if by Lambda or directly) are deployed with 
 
 And also:

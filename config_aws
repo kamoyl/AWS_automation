@@ -488,7 +488,10 @@ aws_list-securitygroups()
       do
         SECURITY_GROUP_NAME=$(jq -r --arg security_group_id ${SECURITY_GROUP_ID} '.SecurityGroups[] | select(.GroupId == $security_group_id) | .GroupName' "${TMP}/${AWS_SECURITY_GROUPS}_full.json")
         inf "  Security group: ${BLUE}${SECURITY_GROUP_NAME}${CYAN}, with Id: ${LIME}${SECURITY_GROUP_ID}"
-        if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
+        if [[ ${CLEANING} == yes ]] && [[ ${SECURITY_GROUP_NAME} != *"_lambda_ec2-"* ]]  && [[ ${AWS_ZONE} == "N" ]]
+        then
+          aws_ec2_security_group_delete ${SECURITY_GROUP_ID}
+        elif [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
         then
           aws_ec2_security_group_delete ${SECURITY_GROUP_ID}
         fi
@@ -1481,7 +1484,7 @@ aws_S3_bucket_lifecycle()
   else
     S3_BUCKET_NAME="${1}"
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} s3api get-bucket-lifecycle-configuration --bucket ${S3_BUCKET_NAME} > "${TMP}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_lifecycle.json" 2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} s3api get-bucket-lifecycle-configuration --bucket ${S3_BUCKET_NAME} > "${TMP}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_lifecycle.json" 2>"${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_lifecycle.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -ne 0 ]
   then
@@ -1501,6 +1504,33 @@ aws_S3_bucket_lifecycle()
   fi
 }
 
+aws_S3_bucket_logging_permissions()
+{
+  if [ $# -ne 1 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs one parameter: ${YELLOW}(1)S3_bucket_name"
+    ERROR_CODE="1"
+    failed
+  else
+    S3_BUCKET_NAME="${1}"
+  fi
+  #ToDo: check if permissions to logging is set properly
+  #aws ${AWS_PROFILE_USE_CHECK[*]} s3api get-bucket-acl --bucket ${S3_BUCKET_NAME} > "${TMP}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging_permissions.json" 2>"${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging_permissions.log"
+  #inf "          S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) permissions to logging checking..."
+  aws ${AWS_PROFILE_USE_CHECK[*]} s3api put-bucket-acl --bucket ${S3_BUCKET_NAME} --grant-write URI=http://acs.amazonaws.com/groups/s3/LogDelivery --grant-read-acp URI=http://acs.amazonaws.com/groups/s3/LogDelivery > "${TMP}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging_permissions.json" 2>"${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging_permissions.log"
+  ERROR_CODE="$?"
+  if [ ${ERROR_CODE} -ne 0 ]
+  then
+    error "          S3 bucket (${YELLOW}${S3_BUCKET_NAME}${RED}) permissions to logs cannot be set"
+    debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log"
+    debug "              $(cat "${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log")"
+    failed
+  else
+    inf "          S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) ${DARK_GREEN}permissions to logs${CYAN} has been set properly"
+  fi
+}
+
+
 aws_S3_bucket_logging()
 {
   if [ $# -ne 1 ]
@@ -1511,34 +1541,24 @@ aws_S3_bucket_logging()
   else
     S3_BUCKET_NAME="${1}"
   fi
+  aws_S3_bucket_logging_permissions ${S3_BUCKET_NAME}
   AWS_S3_BUCKET_LOGGING_CHECK=$(aws ${AWS_PROFILE_USE_CHECK[*]} s3api get-bucket-logging --bucket ${S3_BUCKET_NAME} | jq -r '.LoggingEnabled' | head -n1)
   if [ -z ${AWS_S3_BUCKET_LOGGING_CHECK} ]
   then
-    inf "          S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) has logging not enabled, enabling..."
-    aws ${AWS_PROFILE_USE_CHECK[*]} s3api put-bucket-acl --bucket ${S3_BUCKET_NAME} --grant-write URI=http://acs.amazonaws.com/groups/s3/LogDelivery --grant-read-acp URI=http://acs.amazonaws.com/groups/s3/LogDelivery > "${TMP}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging_permissions.json" 2>"${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging_permissions.log"
-    ERROR_CODE="$?"
-    if [ ${ERROR_CODE} -ne 0 ]
-    then
-      error "            S3 bucket ${YELLOW}${S3_BUCKET_NAME}${RED} permissions to logs cannot be set"
-      debug "              LOG FILE: ${YELLOW}${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log"
-      debug "                $(cat "${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log")"
-      failed
-    else
-      inf "            S3 bucket ${YELLOW}${S3_BUCKET_NAME}${CYAN} permissions to logs has been set properly"
-    fi
+    inf "              S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) has logging not enabled, enabling..."
     aws ${AWS_PROFILE_USE_CHECK[*]} s3api put-bucket-logging --bucket ${S3_BUCKET_NAME} --bucket-logging-status '{"LoggingEnabled": {"TargetBucket": "'${S3_BUCKET_NAME}'","TargetPrefix": "'${S3_BUCKET_NAME}Logs/'"}}' > "${TMP}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.json" 2>"${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log"
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -ne 0 ]
     then
-      error "              S3 bucket ${YELLOW}${S3_BUCKET_NAME}${CYAN} logging cannot be set"
-      debug "                LOG FILE: ${YELLOW}${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log"
-      debug "                  $(cat "${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log")"
+      error "                S3 bucket ${YELLOW}${S3_BUCKET_NAME}${CYAN} logging cannot be set"
+      debug "                  LOG FILE: ${YELLOW}${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log"
+      debug "                    $(cat "${LOG}/${AWS_S3BUCKETS_DETAILS}_${S3_BUCKET_NAME}_logging.log")"
       failed
     else
-      inf "            S3 bucket ${YELLOW}${S3_BUCKET_NAME}${CYAN} logging has been set properly"
+      inf "              S3 bucket ${YELLOW}${S3_BUCKET_NAME}${CYAN} ${DARK_GREEN}logging${CYAN} has been set properly"
     fi
   else
-    inf "          S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) has logging enabled"
+    inf "            S3 bucket (${YELLOW}${S3_BUCKET_NAME}${CYAN}) has ${DARK_GREEN}logging${CYAN} enabled"
   fi
 }
 

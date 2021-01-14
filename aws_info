@@ -245,7 +245,7 @@ then
       inf "        Private IP: ${LIME}${AWS_INSTANCE_IP}"
       if [ -z ${AWS_INSTANCE_PUBLIC_IP} ] || [[ ${AWS_INSTANCE_PUBLIC_IP} == "null" ]]
       then
-        inf "        Public  IP: ${GREEN}${AWS_INSTANCE_IP}"
+        inf "        Public  IP: ${WINE}none"
       fi
     elif [[ ${AWS_INSTANCE_STATE} == "running" ]]
     then
@@ -253,7 +253,7 @@ then
       inf "        Private IP: ${LIME}${AWS_INSTANCE_IP}"
       if [ -z ${AWS_INSTANCE_PUBLIC_IP} ] || [[ ${AWS_INSTANCE_PUBLIC_IP} == "null" ]]
       then
-        inf "        Public  IP: ${GREEN}${AWS_INSTANCE_IP}"
+        inf "        Public  IP: ${WINE}none"
       fi
     else
       inf "      state: ${WINE}${AWS_INSTANCE_STATE^^}"
@@ -508,6 +508,7 @@ then
       aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
       aws_S3_bucket_encryption "${S3_BUCKET}"
       aws_S3_bucket_lifecycle "${S3_BUCKET}"
+      aws_S3_bucket_logging "${S3_BUCKET}"
       if [[ ${AWS_ZONE} == "Y" ]]
       then
         inf "    Mounting locally S3 buckets"

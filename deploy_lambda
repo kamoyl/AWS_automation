@@ -34,7 +34,6 @@ then
     NAMED_ROLE_NAME=$(aws ${AWS_PROFILE_USE_CHECK[*]} iam list-entities-for-policy --policy-arn "${NAMED_POLICY_ARN}" | jq -r '.PolicyRoles[].RoleName' | grep ${AWS_EC2_LAMBDA_ROLE})
     if [ -z ${NAMED_ROLE_NAME} ]
     then
-      echo "Third part of if"
       aws_attaching_policy_to_role ${AWS_EC2_LAMBDA_ROLE} "${NAMED_POLICY_ARN}"
     else
       inf "    Policy: ${DARK_GREEN}${AWS_EC2_LAMBDA_POLICY}${CYAN} is already attached to role: ${YELLOW}${AWS_EC2_LAMBDA_ROLE}"
@@ -104,9 +103,7 @@ do
   SHELL_SCRIPT=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $2}')
   SHELL_SCRIPT_NAME=$(echo ${SHELL_SCRIPT} | awk -F\. '{print $1}')
   SHELL_SCRIPT_CONTENT=$(cat "${SCRIPTS_HOME}/lambda_functions/${SHELL_SCRIPT}")
-  EVENT_SCHEDULE=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $3}')
-  EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_rule"
-  EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_event"
+  RANDOM_ID_GEN=$(cat /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
   AWS_LAMBDA_NAME="${AWS_COMMON_NAME}_${SHELL_SCRIPT_NAME}_${LAMBDA_SCRIPT_NAME}"
   AWS_HANDLER_FUNCTION_NAME="${LAMBDA_SCRIPT_NAME}_handler"
   AWS_LAMBDA_HANDLER="${AWS_LAMBDA_NAME}.${AWS_HANDLER_FUNCTION_NAME}"
@@ -119,12 +116,69 @@ do
   export SUBNET_ID
   export REGION
   export SECURITY_GROUP_ID
-  lambda_function_deployment ${AWS_LAMBDA_NAME} ${AWS_HANDLER_FUNCTION_NAME} 
-  RANDOM_ID_GEN=$(cat /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
+  inf "${MAGENTA}Checking if Lambda function (${BLUE}${AWS_LAMBDA_NAME}${MAGENTA}) exists"
+  lambda_function_deployment ${AWS_LAMBDA_NAME} ${AWS_HANDLER_FUNCTION_NAME}
   EVENT_TARGET_ID="Id=${RANDOM_ID_GEN},Arn=${EC2_LAMBDA_SCRIPT_ARN}"
-  events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
-  lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
-  events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
+  
+  EVENT_SCHEDULE=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $3}')
+  if [ -z ${EVENT_SCHEDULE} ]
+  then
+    warn "  Lambda function: ${YELLOW}${AWS_LAMBDA_NAME}${WINE} is configured without schedule"
+  else
+    if [[ ${EVENT_SCHEDULE} =~ ^cron.* ]]
+    then
+      EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_rule"
+      EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_event"
+    elif [[ ${EVENT_SCHEDULE} =~ ^rate.* ]]
+    then
+      EVENT_SCHEDULE_RATE="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print $1}')"
+      EVENT_SCHEDULE_RANGE="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print $2}' | awk -F\) '{print $1}')"
+      EVENT_BRIDGE_RULE_NAME="every${EVENT_SCHEDULE_RATE}${EVENT_SCHEDULE_RANGE}_lambda_rule"
+      EVENT_BRIDGE_EVENT_NAME=$(echo ${EVENT_BRIDGE_RULE_NAME} | sed 's/_rule/_event/g')
+    fi
+    if grep -q "${EC2_LAMBDA_SCRIPT_ARN}" "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json 2>/dev/null
+    then
+      inf "    ${WINE}Target: ${GREEN}${EC2_LAMBDA_SCRIPT_ARN}${WINE} is already added to rule:"
+      for TARGET_IN_RULE in $(grep -l "${EC2_LAMBDA_SCRIPT_ARN}" "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json | awk -F\/ '{print $NF}' | sed "s/${AWS_EVENTS_RULES}_//g;s/_targets_full.json//g")
+      do
+        inf "      ${BLUE}${TARGET_IN_RULE}"
+      done
+    else
+      if [ -s "${TMP}/${AWS_EVENTS_RULES}_target_amount.csv" ]
+      then
+        FIRST_LINE_WITH_RULE_READY_FOR_TARGET=$(awk -F\~ '{if($2<5)print $0}' "${TMP}/${AWS_EVENTS_RULES}_target_amount.csv" | grep "^${EVENT_BRIDGE_RULE_NAME}" | head -n1 | awk -F\~ '{print $1}')
+        if [ -z ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET} ]
+        then
+          EVENT_BRIDGE_RULE_NAME_OLD=${EVENT_BRIDGE_RULE_NAME}
+          EVENT_BRIDGE_RULE_NAME_NEW=${EVENT_BRIDGE_RULE_NAME}_${RANDOM_ID_GEN}
+          EVENT_BRIDGE_RULE_NAME=${EVENT_BRIDGE_RULE_NAME_NEW}
+          EVENT_BRIDGE_EVENT_NAME_NEW=$(echo ${EVENT_BRIDGE_RULE_NAME} | sed 's/_rule/_event/g')
+          EVENT_BRIDGE_EVENT_NAME=${EVENT_BRIDGE_EVENT_NAME_NEW}
+          warn "    Target: ${GREEN}${EC2_LAMBDA_SCRIPT_ARN}${CYAN} cannot be added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME_OLD}${WINE} due to quota"
+          events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
+          events_list_of_rules
+          lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
+          events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
+          events_list_of_all_targets
+          wait
+        else
+          #echo "target: ${EC2_LAMBDA_SCRIPT_ARN} will be added to rule: ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}"
+          EVENT_BRIDGE_EVENT_NAME_NEW=$(echo ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET} | sed 's/_rule/_event/g')_${RANDOM_ID_GEN}
+          EVENT_BRIDGE_EVENT_NAME=${EVENT_BRIDGE_EVENT_NAME_NEW}
+          lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}
+          events_add_target_to_rule ${EVENT_TARGET_ID} ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}
+          events_list_of_all_targets
+          wait
+        fi
+      else
+        events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
+        events_list_of_rules
+        lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
+        events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
+        events_list_of_all_targets
+      fi
+    fi
+  fi
   if [[ ${RUN_SCRIPT} == yes ]]
   then
     inf "  Invoking Lambda function ${YELLOW}${AWS_LAMBDA_NAME}${RED} (when event bridge will be configured properly this will be removed)"

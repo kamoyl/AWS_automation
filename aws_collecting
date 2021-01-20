@@ -38,12 +38,17 @@ aws ${AWS_PROFILE_USE_CHECK[*]} logs            describe-log-groups --log-group-
 aws ${AWS_PROFILE_USE_CHECK[*]} configservice   describe-compliance-by-config-rule               > "${TMP}/${AWS_COMPLIANCE}_full.json"          2>"${LOG}/${AWS_COMPLIANCE}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} cloudtrail      describe-trails                                  > "${TMP}/${AWS_TRAILS}_full.json"              2>"${LOG}/${AWS_TRAILS}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} events          list-event-buses                                 > "${TMP}/${AWS_EVENTS_BUSES}_full.json"        2>"${LOG}/${AWS_EVENTS_BUSES}.log" &
-aws ${AWS_PROFILE_USE_CHECK[*]} events          list-rules                                       > "${TMP}/${AWS_EVENTS_RULES}_full.json"        2>"${LOG}/${AWS_EVENTS_RULES}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} sns             list-topics                                      > "${TMP}/${AWS_SNS_TOPICS}_full.json"        2>"${LOG}/${AWS_SNS_TOPICS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} sns             list-subscriptions                               > "${TMP}/${AWS_SNS_SUBSC}_full.json"        2>"${LOG}/${AWS_SNS_SUBSC}.log" &
+wait
+events_list_of_rules
+events_list_of_all_targets
 wait
 END_AWS_COLLECTINGDATA_TIME=$(date +%s.%4N)
 DEFAULT_VPC=$(jq -r '.Vpcs[].VpcId' "${TMP}/${AWS_VPCS}_full.json")
 
 #start separating data
+
 #separation of policies
 jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name) | not)' "${TMP}/${AWS_POLICIES}_full.json" > "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}.log"
 

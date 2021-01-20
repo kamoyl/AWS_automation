@@ -538,7 +538,7 @@ then
     then
       for EVENT_RULE in $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | contains($aws_default_name) | not) | select(.EventBusName == $event_bus_name) | select(.ManagedBy == "schemas.amazonaws.com" | not) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json")
       do
-        aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --event-bus-name ${EVENT_BUS_NAME} --rule ${EVENT_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" 2>&1
+        #aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --event-bus-name ${EVENT_BUS_NAME} --rule ${EVENT_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" 2>&1
         EVENT_RULE_NAME=${EVENT_RULE}
         EVENT_RULE_BUS=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .EventBusName' "${TMP}/${AWS_EVENTS_RULES}_full.json")
         EVENT_RULE_SCHEDULE=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .ScheduleExpression' "${TMP}/${AWS_EVENTS_RULES}_full.json")
@@ -580,6 +580,40 @@ else
   warn "  There is no ${AWS_COMMON_NAME} Event Buses yet"  
 fi
 #AWS events
+
+#AWS SNS
+#ToDo: AWS SNS list of topics, subscriptions, endpoints list and clears
+if [ -s "${TMP}/${AWS_SNS_TOPICS}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}SNS topics:"
+  TOPIC_ARN_CHECK=$(jq -r --arg default_name ${AWS_DEFAULT_NAME} '.Topics[] | select(.TopicArn | contains($default_name) | not) | .TopicArn' "${TMP}/${AWS_SNS_TOPICS}_full.json" | head -n1)
+  if [ -z ${TOPIC_ARN_CHECK} ]
+  then
+    warn "  There is no SNS topics yet"
+  else
+    for TOPIC_ARN in $(jq -r --arg default_name ${AWS_DEFAULT_NAME} '.Topics[] | select(.TopicArn | contains($default_name) | not) | .TopicArn' "${TMP}/${AWS_SNS_TOPICS}_full.json")
+    do
+      inf "  Topic ARN: ${LIGHT_BLUE}${TOPIC_ARN}"
+      if [ -s "${TMP}/${AWS_SNS_SUBSC}_full.json" ]
+      then
+        for SUBSCRIPTION_ARN in $(jq -r --arg topic_arn ${TOPIC_ARN} '.Subscriptions[] | select(.TopicArn == $topic_arn) | .SubscriptionArn' "${TMP}/${AWS_SNS_SUBSC}_full.json")
+        do
+          inf "    with subscription: ${BROWN}${SUBSCRIPTION_ARN}"
+        done
+      fi
+    done
+  fi
+fi
+#jq '.Subscriptions[]' "${TMP}/${AWS_SNS_TOPICS}_full.json"
+#SubscriptionArn": "arn:aws:sns:eu-west-1:623623120519:kpn-account-events:9d85106d-a9a5-4f43-8dd7-a5d612363818",
+#Owner": "623623120519",
+#Protocol: http, https, email, email-json, sms, sqs, application, lambda
+#Endpoint": "
+#TopicArn
+#jq '.Topics[]' "${TMP}/${AWS_SNS_SUBSC}_full.json"
+#TopicArn
+#AWS SNS
 
 #AWS KeyPairs
 if [ -s "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" ]
@@ -766,7 +800,7 @@ then
   export SLACK_INSTANCES=$(cat "${TMP}/${AWS_INSTANCES_DETAILS}_slack.out")
   export SLACK_AMIS=$(cat "${TMP}/${AWS_AMIS_DETAILS}_slack.out")
   export SLACK_VOLS=$(cat "${TMP}/${AWS_VOLS_DETAILS}_slack.out")
-  source "${SCRIPTS_HOME}/slack_notifiction_info"
+  source "${SCRIPTS_HOME}/slack_notification_info"
   if [[ ${VERBOSE} == yes ]]
   then
     debug "    has just been sent"

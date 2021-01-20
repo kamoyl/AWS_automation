@@ -86,6 +86,8 @@ AWS_SUBNETS_DETAILS="aws_subnets_${CURRENT_TIMESTAMP}"
 AWS_TRAILS="aws_trails_${CURRENT_TIMESTAMP}"
 AWS_VOLS_DETAILS="aws_EC2_vols_${CURRENT_TIMESTAMP}"
 AWS_VPCS="aws_vpcs_${CURRENT_TIMESTAMP}"
+AWS_SNS_TOPICS="aws_sns-topics_${CURRENT_TIMESTAMP}"
+AWS_SNS_SUBSC="aws_sns-sunscriptions_${CURRENT_TIMESTAMP}"
 SECURITY_GROUP_LAMBDA_NAME="${AWS_COMMON_NAME}_lambda_ec2-sec_group"
 if [ ! -z ${EXTERNAL_INET_IP} ]
 then
@@ -326,6 +328,7 @@ aws_newest_ami()
     fi
   else
     error "  There is no AMI(s), exitting"
+    #ToDo: picking up examples AMI: 
     failed
   fi
 }
@@ -901,7 +904,7 @@ lambda_function_deployment()
       inf "    Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${CYAN} deployed properly"
       EC2_LAMBDA_SCRIPT_ARN=$(jq -r '.FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_${AWS_LAMBDA_FUNCTION_NAME}_full.json")
       debug "      Slack notification...."
-      source "${SCRIPTS_HOME}/slack_notifiction_lambda"
+      source "${SCRIPTS_HOME}/slack_notification_lambda"
     fi
   fi
 }
@@ -1716,27 +1719,62 @@ events_create_cron_rule()
     failed
   else
     EVENT_BRIDGE_RULE_NAME="${1}"
-    EVENT_BRIDGE_RULE_NAME_CRON="${2}"
+    EVENT_BRIDGE_RULE_NAME_SCHEDULE="${2}"
   fi
   EVENT_BRIDGE_RULE_NAME_CHECK=$(jq -r --arg event_bridge_rule_name ${EVENT_BRIDGE_RULE_NAME} '.Rules[] | select(.Name == $event_bridge_rule_name) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_full.json")
   if [ -z ${EVENT_BRIDGE_RULE_NAME_CHECK} ]
   then
-    inf "    Adding event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} with cron: ${BROWN}\"${EVENT_BRIDGE_RULE_NAME_CRON}\""
-    aws ${AWS_PROFILE_USE_CHECK[*]} events put-rule --schedule-expression "cron${EVENT_BRIDGE_RULE_NAME_CRON}" --name ${EVENT_BRIDGE_RULE_NAME} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}.log"
+    inf "    Adding event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} with schedule: ${BROWN}\"${EVENT_BRIDGE_RULE_NAME_SCHEDULE}\""
+    aws ${AWS_PROFILE_USE_CHECK[*]} events put-rule --schedule-expression "${EVENT_BRIDGE_RULE_NAME_SCHEDULE}" --name ${EVENT_BRIDGE_RULE_NAME} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}.log"
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -eq 0 ]
     then
       inf "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} added properly"
       debug "        Slack notification...."
-      source "${SCRIPTS_HOME}/slack_notifiction_event_rule"
+      source "${SCRIPTS_HOME}/slack_notification_event_rule"
     else
       error "      Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${RED} failed to add"
       debug "        LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}.log"
       failed
     fi
   else
-    inf "    ${WINE}Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${WINE} already exists"
+    EVENT_BRIDGE_TARGET_AMOUNT=$(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_targets_full.json" | wc -l)
+    if [ ${EVENT_BRIDGE_TARGET_AMOUNT} -ge 5 ]
+    then
+      warn "    Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${WINE} has already full with targets (${RED}5${WINE})"
+    else
+      inf "    ${WINE}Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${WINE} already exists (targets: ${GREEN}${EVENT_BRIDGE_TARGET_AMOUNT}${CYAN})"
+    fi
   fi
+}
+
+events_list_of_rules()
+{
+  aws ${AWS_PROFILE_USE_CHECK[*]} events list-rules > "${TMP}/${AWS_EVENTS_RULES}_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}.log"
+}
+
+events_list_of_all_targets()
+{
+  if [ -s "${TMP}/${AWS_EVENTS_BUSES}_full.json" ]
+  then
+    for EVENT_BUS in $(jq -r '.EventBuses[].Name' "${TMP}/${AWS_EVENTS_BUSES}_full.json")
+    do
+      EVENT_BUS_NAME=${EVENT_BUS}
+      EVENT_BUS_ARN="$(jq -r --arg event_bus_name ${EVENT_BUS_NAME} '.EventBuses[] | select(.Name == $event_bus_name) | .Arn' "${TMP}/${AWS_EVENTS_BUSES}_full.json")"
+      if [ -s "${TMP}/${AWS_EVENTS_RULES}_full.json" ] && [ ! -z $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | contains($aws_default_name) | not) | select(.EventBusName == $event_bus_name) | select(.ManagedBy == "schemas.amazonaws.com" | not) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json" | head -n1) ]
+      then
+        for EVENT_RULE in $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | contains($aws_default_name) | not) | select(.EventBusName == $event_bus_name) | select(.ManagedBy == "schemas.amazonaws.com" | not) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        do
+          (
+            aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --event-bus-name ${EVENT_BUS_NAME} --rule ${EVENT_RULE} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets.log"
+            EVENT_RULE_AMOUNTS_TARGET=$(grep Arn "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" | wc -l)
+            echo "${EVENT_RULE}~${EVENT_RULE_AMOUNTS_TARGET}~${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" >> "${TMP}/${AWS_EVENTS_RULES}_target_amount.csv"
+          ) &
+        done
+      fi
+    done
+  fi
+  wait
 }
 
 #aws ${AWS_PROFILE_USE_CHECK[*]} events create-event-bus --name ${AWS_COMMON_NAME}-EC2_scripts_deployment_bus > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_BUS}_full.json" 2>&1
@@ -1806,24 +1844,29 @@ events_add_target_to_rule()
     EVENT_BRIDGE_TARGET_ID=${1}
     EVENT_BRIDGE_RULE_NAME=${2}
   fi
-  EVENT_BRIDGE_TARGET_ARN_CHECK=$(aws ${AWS_PROFILE_USE_CHECK[*]} events list-targets-by-rule --rule ${EVENT_BRIDGE_RULE_NAME} | jq -r --arg arn ${EC2_LAMBDA_SCRIPT_ARN} '.Targets[] | select(.Arn == $arn) .Arn' | head -n1)
-  if [ -z ${EVENT_BRIDGE_TARGET_ARN_CHECK} ]
+  EVENT_BRIDGE_TARGET_ARN_CHECK=$(jq -r --arg arn ${EC2_LAMBDA_SCRIPT_ARN} '.Targets[] | select(.Arn == $arn) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_targets_full.json" 2>/dev/null | sort -u)
+  EVENT_BRIDGE_TARGET_AMOUNT=$(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_targets_full.json" 2>/dev/null | wc -l)
+  if [ ! -z ${EVENT_BRIDGE_TARGET_ARN_CHECK} ]
   then
-    inf "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} will be added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
-    aws ${AWS_PROFILE_USE_CHECK[*]} events put-targets --rule ${EVENT_BRIDGE_RULE_NAME} --targets ${EVENT_BRIDGE_TARGET_ID} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"
+    inf "        ${WINE}Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${WINE} is already added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  elif [ -z ${EVENT_BRIDGE_TARGET_ARN_CHECK} ] && [ ${EVENT_BRIDGE_TARGET_AMOUNT} -lt 5 ]
+  then
+    inf "      Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} will be added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+    aws ${AWS_PROFILE_USE_CHECK[*]} events put-targets --rule ${EVENT_BRIDGE_RULE_NAME} --targets ${EVENT_BRIDGE_TARGET_ID} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target${RANDOM_ID_GEN}_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target${RANDOM_ID_GEN}.log"
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -eq 0 ]
     then
-      inf "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} added properly"
-      debug "            Slack notification...."
-      source "${SCRIPTS_HOME}/slack_notifiction_lambda_target"
+      inf "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} added properly"
+      debug "          Slack notification...."
+      source "${SCRIPTS_HOME}/slack_notification_lambda_target"
     else
-      error "          Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't added"
-      debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target1.log"
+      error "        Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${RED} wasn't added"
+      debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target${RANDOM_ID_GEN}.log"
       failed
     fi
-  else
-    inf "        ${WINE}Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${WINE} is already added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  elif [ ${EVENT_BRIDGE_TARGET_AMOUNT} -ge 5 ]
+  then
+    warn "      Target: ${GREEN}${EVENT_BRIDGE_TARGET_ID}${CYAN} cannot be added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${WINE} due to quota"
   fi
 }
 

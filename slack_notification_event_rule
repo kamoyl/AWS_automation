@@ -17,7 +17,7 @@ SLACK_PAYLOAD="
       {
         \\\"fallback\\\": \\\"AWS Event Rule: ${EVENT_BRIDGE_RULE_NAME} with schedule: ${EVENT_BRIDGE_RULE_NAME_SCHEDULE}\\\",
         \\\"color\\\": \\\"good\\\",
-        \\\"title\\\": \\\"AWS EventBridge notification:\\\",
+        \\\"title\\\": \\\"AWS EventBridge rule notification:\\\",
         \\\"text\\\": \\\"Rule: *${EVENT_BRIDGE_RULE_NAME}* has been deployed\\\"
       }
     ]

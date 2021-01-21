@@ -136,47 +136,56 @@ do
       EVENT_BRIDGE_RULE_NAME="every${EVENT_SCHEDULE_RATE}${EVENT_SCHEDULE_RANGE}_lambda_rule"
       EVENT_BRIDGE_EVENT_NAME=$(echo ${EVENT_BRIDGE_RULE_NAME} | sed 's/_rule/_event/g')
     fi
-    if grep -q "${EC2_LAMBDA_SCRIPT_ARN}" "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json 2>/dev/null
+    if compgen -G "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json >/dev/null
     then
-      inf "    ${WINE}Target: ${GREEN}${EC2_LAMBDA_SCRIPT_ARN}${WINE} is already added to rule:"
-      for TARGET_IN_RULE in $(grep -l "${EC2_LAMBDA_SCRIPT_ARN}" "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json | awk -F\/ '{print $NF}' | sed "s/${AWS_EVENTS_RULES}_//g;s/_targets_full.json//g")
-      do
-        inf "      ${BLUE}${TARGET_IN_RULE}"
-      done
-    else
-      if [ -s "${TMP}/${AWS_EVENTS_RULES}_target_amount.csv" ]
+      if grep -q "${EC2_LAMBDA_SCRIPT_ARN}" "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json 2>/dev/null
       then
-        FIRST_LINE_WITH_RULE_READY_FOR_TARGET=$(awk -F\~ '{if($2<5)print $0}' "${TMP}/${AWS_EVENTS_RULES}_target_amount.csv" | grep "^${EVENT_BRIDGE_RULE_NAME}" | head -n1 | awk -F\~ '{print $1}')
-        if [ -z ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET} ]
+        inf "    ${WINE}Target: ${GREEN}${EC2_LAMBDA_SCRIPT_ARN}${WINE} is already added to rule:"
+        for TARGET_IN_RULE in $(grep -l "${EC2_LAMBDA_SCRIPT_ARN}" "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json | awk -F\/ '{print $NF}' | sed "s/${AWS_EVENTS_RULES}_//g;s/_targets_full.json//g")
+        do
+          inf "      ${BLUE}${TARGET_IN_RULE}"
+        done
+      else
+        if [ -s "${TMP}/${AWS_EVENTS_RULES}_target_amount.csv" ]
         then
-          EVENT_BRIDGE_RULE_NAME_OLD=${EVENT_BRIDGE_RULE_NAME}
-          EVENT_BRIDGE_RULE_NAME_NEW=${EVENT_BRIDGE_RULE_NAME}_${RANDOM_ID_GEN}
-          EVENT_BRIDGE_RULE_NAME=${EVENT_BRIDGE_RULE_NAME_NEW}
-          EVENT_BRIDGE_EVENT_NAME_NEW=$(echo ${EVENT_BRIDGE_RULE_NAME} | sed 's/_rule/_event/g')
-          EVENT_BRIDGE_EVENT_NAME=${EVENT_BRIDGE_EVENT_NAME_NEW}
-          warn "    Target: ${GREEN}${EC2_LAMBDA_SCRIPT_ARN}${CYAN} cannot be added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME_OLD}${WINE} due to quota"
+          FIRST_LINE_WITH_RULE_READY_FOR_TARGET=$(awk -F\~ '{if($2<5)print $0}' "${TMP}/${AWS_EVENTS_RULES}_target_amount.csv" | grep "^${EVENT_BRIDGE_RULE_NAME}" | head -n1 | awk -F\~ '{print $1}')
+          if [ -z ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET} ]
+          then
+            EVENT_BRIDGE_RULE_NAME_OLD=${EVENT_BRIDGE_RULE_NAME}
+            EVENT_BRIDGE_RULE_NAME_NEW=${EVENT_BRIDGE_RULE_NAME}_${RANDOM_ID_GEN}
+            EVENT_BRIDGE_RULE_NAME=${EVENT_BRIDGE_RULE_NAME_NEW}
+            EVENT_BRIDGE_EVENT_NAME_NEW=$(echo ${EVENT_BRIDGE_RULE_NAME} | sed 's/_rule/_event/g')
+            EVENT_BRIDGE_EVENT_NAME=${EVENT_BRIDGE_EVENT_NAME_NEW}
+            warn "    Target: ${GREEN}${EC2_LAMBDA_SCRIPT_ARN}${CYAN} cannot be added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME_OLD}${WINE} due to quota"
+            events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
+            events_list_of_rules
+            lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
+            events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
+            events_list_of_all_targets
+            wait
+          else
+            #echo "target: ${EC2_LAMBDA_SCRIPT_ARN} will be added to rule: ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}"
+            EVENT_BRIDGE_EVENT_NAME_NEW=$(echo ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET} | sed 's/_rule/_event/g')_${RANDOM_ID_GEN}
+            EVENT_BRIDGE_EVENT_NAME=${EVENT_BRIDGE_EVENT_NAME_NEW}
+            lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}
+            events_add_target_to_rule ${EVENT_TARGET_ID} ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}
+            events_list_of_all_targets
+            wait
+          fi
+        else
           events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
           events_list_of_rules
           lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
           events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
           events_list_of_all_targets
-          wait
-        else
-          #echo "target: ${EC2_LAMBDA_SCRIPT_ARN} will be added to rule: ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}"
-          EVENT_BRIDGE_EVENT_NAME_NEW=$(echo ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET} | sed 's/_rule/_event/g')_${RANDOM_ID_GEN}
-          EVENT_BRIDGE_EVENT_NAME=${EVENT_BRIDGE_EVENT_NAME_NEW}
-          lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}
-          events_add_target_to_rule ${EVENT_TARGET_ID} ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}
-          events_list_of_all_targets
-          wait
         fi
-      else
-        events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
-        events_list_of_rules
-        lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
-        events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
-        events_list_of_all_targets
       fi
+    else
+      events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
+      events_list_of_rules
+      lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
+      events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
+      events_list_of_all_targets
     fi
   fi
   if [[ ${RUN_SCRIPT} == yes ]]

@@ -17,7 +17,7 @@ SLACK_PAYLOAD="
       {
         \\\"fallback\\\": \\\"Lambda function: ${AWS_LAMBDA_FUNCTION_NAME} has just been created\\\",
         \\\"color\\\": \\\"good\\\",
-        \\\"title\\\": \\\"AWS Lambda notification\\\",
+        \\\"title\\\": \\\"AWS Lambda function notification\\\",
         \\\"text\\\": \\\"AWS Lambda function: *${AWS_LAMBDA_FUNCTION_NAME}* has been deployed\\\"
       }
     ]

@@ -17,7 +17,7 @@ SLACK_PAYLOAD="
       {
         \\\"fallback\\\": \\\"Event target: ${EVENT_BRIDGE_TARGET_ID}${CYAN} has been added to rule:  ${EVENT_BRIDGE_RULE_NAME}\\\",
         \\\"color\\\": \\\"good\\\",
-        \\\"title\\\": \\\"AWS EventBridge notification:\\\",
+        \\\"title\\\": \\\"AWS EventBridge target notification:\\\",
         \\\"text\\\": \\\"Event target: *${EVENT_BRIDGE_TARGET_ID}* has been added to rule: *${EVENT_BRIDGE_RULE_NAME}*\\\"
       }
     ]

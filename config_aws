@@ -220,8 +220,6 @@ aws_key_create()
   if [ -s "${HOME}/.ssh/id_rsa" ]
   then
     inf "  I found id_rsa key of current user: ${YELLOW}${USER}${CYAN}, making fingerprint"
-    #ssh-keygen -ef "${HOME}/.ssh/id_rsa" -m PEM | openssl rsa -RSAPublicKey_in -outform DER > "${TMP}/${AWS_EC2_KEYPAIRS}_current_user_DER.output" 2>"${LOG}/${AWS_EC2_KEYPAIRS}_current_user_DER.log"
-    #CURRENT_USER_FINGERPRINT=$(tail -n +2 "${TMP}/${AWS_EC2_KEYPAIRS}_current_user_DER.output" | openssl md5 -c | awk '{print $NF}')
     CURRENT_USER_FINGERPRINT=$(ssh-keygen -f ${HOME}/.ssh/id_rsa.pub -e -m PKCS8 | openssl pkey -pubin -outform DER | openssl md5 -c)
     inf "    Checking if current user: ${YELLOW}${USER}${CYAN} fingerprint exists in AWS EC2"
     if [ -s "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" ]
@@ -763,6 +761,7 @@ aws_ec2_policy_create()
                   [
                     \"s3:*\",
                     \"ec2:*\",
+                    \"sns:*\",
                     \"cloudwatch:*\",
                     \"logs:*\",
                     \"lambda:*\",
@@ -826,7 +825,8 @@ aws_lambda_policy_create()
                 \"Effect\": \"Allow\",
                 \"Action\":
                   [
-                    \"ec2:*\"
+                    \"ec2:*\",
+                    \"sns:*\"
               ],
                 \"Resource\": \"*\"
               }

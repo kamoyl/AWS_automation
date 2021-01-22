@@ -327,7 +327,7 @@ then
   source "${SCRIPTS_HOME}/deploy_lambda"
   inf ""
   inf "Deployment of prerequisites took: ${WINE}${DEPLOY_TIME} ${CYAN}[s]"
-  inf "  Deployment of Lambda function ${YELLOW}${AWS_LAMBDA_NAME}${CYAN} took ${WINE}${DEPLOY_LAMBDA_TIME} ${CYAN}[s]"
+  inf "  Deployment of Lambda functions took ${WINE}${DEPLOY_LAMBDA_TIME} ${CYAN}[s]"
 fi
 
 if [[ ${VERBOSE} == no ]]

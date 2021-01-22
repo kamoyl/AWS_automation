@@ -605,6 +605,10 @@ then
     done
   fi
 fi
+#aws lambda add-permission --function-name SNS-X-Account \
+#topic: --source-arn arn:aws:sns:us-east-2:12345678901A:lambda-x-account \
+#lambda function name:  --statement-id sns-x-account --action "lambda:InvokeFunction" \
+#--principal sns.amazonaws.com --profile accountB
 #jq '.Subscriptions[]' "${TMP}/${AWS_SNS_TOPICS}_full.json"
 #SubscriptionArn": "arn:aws:sns:eu-west-1:623623120519:kpn-account-events:9d85106d-a9a5-4f43-8dd7-a5d612363818",
 #Owner": "623623120519",
@@ -730,12 +734,33 @@ then
   else
     for AWS_LOG_NAME in $(jq -r '.logGroups[].logGroupName' "${TMP}/${AWS_LOGS}_full.json")
     do
+      AWS_LOGS_NAME=$(echo ${AWS_LOG_NAME} | awk -F\/ '{print $NF}')
       inf "  Log group: ${BROWN}${AWS_LOG_NAME}"
+
+      RETENTION_LOGS_CHECKING=$(jq -r --arg aws_log_name ${AWS_LOG_NAME} '.logGroups[] | select(.logGroupName == $aws_log_name) | .retentionInDays' "${TMP}/${AWS_LOGS}_full.json")
+      if [ -z ${RETENTION_LOGS_CHECKING} ] || [ ${RETENTION_LOGS_CHECKING} -ne ${AWS_LOGS_RETENTION_DAYS} ]
+      then
+        inf "    Rentention policy to log group: ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days must be applied"
+        aws ${AWS_PROFILE_USE_CHECK[*]} logs put-retention-policy --log-group-name ${AWS_LOG_NAME} --retention-in-days ${AWS_LOGS_RETENTION_DAYS} > "${TMP}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.json" 2> "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"
+        ERROR_CODE="$?"
+        if [ ${ERROR_CODE} -eq 0 ]
+        then
+          debug "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${BLUE} applied properly"
+        else
+          error "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${RED} cannot be applied"
+          debug "        LOG_FILE=${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"
+          error "          $(cat "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log")"
+        fi
+      else
+        inf "    Rentention policy to log group: ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days is already assigned"
+      fi
       if [[ ${CLEANING} == yes ]]
       then
         inf "    removing log group: ${BROWN}${AWS_LOG_NAME}"
-        aws ${AWS_PROFILE_USE_CHECK[*]} logs delete-log-group --log-group-name ${AWS_LOG_NAME}
+        aws ${AWS_PROFILE_USE_CHECK[*]} logs delete-log-group --log-group-name ${AWS_LOG_NAME} > "${TMP}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_deletion.json" 2> "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_deletion.log"
       fi
+    #ToDo: logs from CloudWatch
+    #aws ${AWS_PROFILE_USE_CHECK[*]} logs get-log-events --log-group-name /aws/lambda/${AWS_LAMBDA_NAME} --log-stream-name $(cat out) --limit 5
     done
   fi
 fi

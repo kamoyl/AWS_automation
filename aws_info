@@ -455,6 +455,9 @@ inf ""
 inf "${MAGENTA}EC2 AMIs"
 if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | head -n1) ]
 then
+  AWS_AMI_IMAGE_AMOUNT=$(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | wc -l)
+  #ToDo: automatically remove older AMI if more then 2
+  #aws ec2 create-image --instance-id $(cat /sys/devices/virtual/dmi/id/board_asset_tag) --name "td_jenkins_v34" --description "only for testing purposes"
   for AWS_AMI_IMAGE_ID in $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
   do
     AWS_AMI_NAME=$(jq -r --arg image_id ${AWS_AMI_IMAGE_ID} '.Images[] | select(.ImageId == $image_id) | .Name' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
@@ -738,7 +741,7 @@ then
       inf "  Log group: ${BROWN}${AWS_LOG_NAME}"
 
       RETENTION_LOGS_CHECKING=$(jq -r --arg aws_log_name ${AWS_LOG_NAME} '.logGroups[] | select(.logGroupName == $aws_log_name) | .retentionInDays' "${TMP}/${AWS_LOGS}_full.json")
-      if [ -z ${RETENTION_LOGS_CHECKING} ] || [ ${RETENTION_LOGS_CHECKING} -ne ${AWS_LOGS_RETENTION_DAYS} ]
+      if [[ ${RETENTION_LOGS_CHECKING} == null ]] || [ -z ${RETENTION_LOGS_CHECKING} ] || [ ${RETENTION_LOGS_CHECKING} -ne ${AWS_LOGS_RETENTION_DAYS} ]
       then
         inf "    Rentention policy to log group: ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days must be applied"
         aws ${AWS_PROFILE_USE_CHECK[*]} logs put-retention-policy --log-group-name ${AWS_LOG_NAME} --retention-in-days ${AWS_LOGS_RETENTION_DAYS} > "${TMP}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.json" 2> "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"

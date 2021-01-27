@@ -158,8 +158,8 @@ then
   u=${DEPLOY_USER}
 elif [ -z ${u} ] && [ ! -z ${A} ]
 then
-  #DEPLOY_USER="ec2-user"
-  DEPLOY_USER="cloud_user"
+  DEPLOY_USER="ec2-user"
+  #DEPLOY_USER="cloud_user"
   u=${DEPLOY_USER}
 else
   DEPLOY_USER=${u}
@@ -229,14 +229,17 @@ then
 else
   for S3_BUCKET in ${AWS_S3_BUCKETS[*]}
   do
-    warn "  S3 bucket: ${YELLOW}${S3_BUCKET}${WINE} doesn't exist"
-    aws_S3_bucket_create "${S3_BUCKET}"
-    aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
-    aws_S3_bucket_encryption "${S3_BUCKET}"
-    aws_S3_bucket_lifecycle "${S3_BUCKET}"
-    aws_S3_bucket_logging "${S3_BUCKET}"
+    (
+      warn "  S3 bucket: ${YELLOW}${S3_BUCKET}${WINE} doesn't exist"
+      aws_S3_bucket_create "${S3_BUCKET}"
+      aws_S3_bucket_secure_access_policy "${S3_BUCKET}"
+      aws_S3_bucket_encryption "${S3_BUCKET}"
+      aws_S3_bucket_lifecycle "${S3_BUCKET}"
+      aws_S3_bucket_logging "${S3_BUCKET}"
+    ) &
   done
 fi
+#ToDo: maybe CloudFront for all logs ?
 #ToDo: KMS add a key to encrypt S3 buckets...
 #ToDo: add removing S3 buckets function
 wait

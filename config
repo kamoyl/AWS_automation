@@ -24,6 +24,9 @@ DARK_GREEN=$(echo -e "\x1b[38;2;50;200;100m")
 LIGHT_BLUE=$(echo -e "\x1b[38;2;50;200;240m")
 LIGHT_YELLOW=$(echo -e "\x1b[38;2;250;250;0m")
 
+#Internal Field Separator
+#debug "ORIGIFS=$' ^I\n'" #<space><tab><new line>
+#debug cat -etv <<<"$IFS"
 ORIGIFS=${IFS}
 NEWIFS=$'\n'
 

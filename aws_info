@@ -289,6 +289,7 @@ then
             inf "        and it is ${YELLOW}${AWS_S3_SNAPSHOT_DAYS}${CYAN} days old"
           fi
         done
+        IFS=${ORIGIFS}
       fi
       S3_SNAPSHOTS_AMOUNT=$(jq -r --arg aws_instance_vol ${AWS_INSTANCE_VOL} '.Snapshots[] | select(.VolumeId == $aws_instance_vol) | .SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json" | wc -l)
     done
@@ -812,6 +813,7 @@ else
       AWS_SERVICE_COSTS=$(echo ${AWS_SERVICE_COST_LINE} | awk -F\~ '{print $2}')
       debug "      ${MAGENTA}${AWS_SERVICE}${BLUE}- ${LIGHT_YELLOW}${AWS_SERVICE_COSTS} USD"
     done
+    IFS=${ORIGIFS}
   fi
   inf "  current year (${BROWN}${CURRENT_YEAR}${CYAN}): ${LIGHT_YELLOW}${CURRENT_YEAR_COSTS} USD"
 fi

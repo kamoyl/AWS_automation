@@ -299,7 +299,9 @@ aws_newest_ami()
   inf "${MAGENTA}Trying to figure it out the newest AMI:"
   if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ]
   then
+    AWS_AMI_IMAGE_AMOUNT=$(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | wc -l)
     LATEST_AMI_ID=$(jq -r '.Images[] | .CreationDate + " " + .ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | sort | tail -n1 | awk '{print $2}')
+    OLDEST_AMI_ID=$(jq -r '.Images[] | .CreationDate + " " + .ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | sort | head -n1 | awk '{print $2}')
     inf "  The latest one seems to be this one: ${BROWN}${LATEST_AMI_ID}"
     IMAGE_STATE=$(jq -r --arg ImageId ${LATEST_AMI_ID} '.Images[] | select(.ImageId == $ImageId) | .State' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
     if [[ ${IMAGE_STATE} == "available" ]]
@@ -324,6 +326,10 @@ aws_newest_ami()
         done
         printf '\n'
       done
+    fi
+    if [ ${AWS_AMI_IMAGE_AMOUNT} -ge 3 ]
+    then
+      debug "      And the oldest seems to be this one: ${BROWN}${OLDEST_AMI_ID}"
     fi
   else
     error "  There is no AMI(s), exitting"

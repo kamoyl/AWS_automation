@@ -456,8 +456,10 @@ inf ""
 inf "${MAGENTA}EC2 AMIs"
 if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | head -n1) ]
 then
-  AWS_AMI_IMAGE_AMOUNT=$(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | wc -l)
+  debug "  #### TESTING - amount of AMIs: ${WINE}${AWS_AMI_IMAGE_AMOUNT}${BLUE} ####"
+  aws_newest_ami
   #ToDo: automatically remove older AMI if more then 2
+  #ToDo:add a lambda process once a week/month to create newest API
   #aws ec2 create-image --instance-id $(cat /sys/devices/virtual/dmi/id/board_asset_tag) --name "td_jenkins_v34" --description "only for testing purposes"
   for AWS_AMI_IMAGE_ID in $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
   do
@@ -749,7 +751,7 @@ then
         ERROR_CODE="$?"
         if [ ${ERROR_CODE} -eq 0 ]
         then
-          debug "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${BLUE} applied properly"
+          debug "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${BLUE} days applied properly"
         else
           error "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${RED} cannot be applied"
           debug "        LOG_FILE=${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"

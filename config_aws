@@ -436,7 +436,7 @@ aws_list-profiles()
           do
             inf "    Role: ${YELLOW}${ROLE_NAME}${CYAN} is attached to instance profile: ${DARK_GREEN}${INSTANCE_PROFILE_NAME}"
             AWS_IAM_POLICY_NAME=$(aws_list-attached-role-policies ${ROLE_NAME} && jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")
-            if [ -z ${AWS_IAM_POLICY_NAME} ]
+            if [ -z $(head -n1 <(echo ${AWS_IAM_POLICY_NAME})) ]
             then
               inf "      And role: ${YELLOW}${ROLE_NAME}${CYAN} has no policy attached"
               if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
@@ -445,9 +445,10 @@ aws_list-profiles()
                 aws_role_removal "${ROLE_NAME}"
               fi
             else
-              for POLICY_NAME in ${AWS_IAM_POLICY_NAME}
+              inf "      Role: ${YELLOW}${ROLE_NAME}${CYAN} has policy:"
+              for POLICY_NAME in $(jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")
               do
-                inf "      Role: ${YELLOW}${ROLE_NAME}${CYAN} has policy: ${DARK_GREEN}${POLICY_NAME}${CYAN} attached to it"
+                inf "      ${DARK_GREEN}${POLICY_NAME}${CYAN} attached to it"
                 if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
                 then
                   POLICY_ARN=$(jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")
@@ -525,6 +526,7 @@ aws_AMI_create()
     AMI_NAME=${2}
   fi
   aws ${AWS_PROFILE_USE_CHECK[*]} ec2 create-image --instance-id ${EC2_INSTANCE_ID} --name "${AMI_NAME}_${CURRENT_TIMESTAMP}" --description "${AWS_NAMES_PREFIX} AMI" > "${TMP}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}_full.json"
+  #ToDo: slack_notification (1)slack channel, (2) slack notification title, (3) slack notificatio text, (4)icon_emoji, (5) slack notification color, (6) footer url, (7) footer link
   AMI_ID=$(jq -r 'ImageId' "${TMP}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}_full.json")
   if [[ ${AWS_OWNER_ID} == "623623120519" ]]
   then
@@ -1280,8 +1282,8 @@ is_instance_up()
         sleep 0.5
         ProgressBar ${NUMBER} 100
       done
-    done
       printf '\n'
+    done
     inf "      Instance ${YELLOW}${AWS_EC2_INSTANCE_ID}${CYAN} is up"
   else
     inf "        on public IP: ${LIME}${AWS_EC2_INSTANCE_PUBLIC_IP}"

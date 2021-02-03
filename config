@@ -350,6 +350,8 @@ function SHOW_TIME ()
 
 slack_notification()
 {
+COLLECTEDIFS=${IFS}
+IFS=${ORIGIFS}
 FUNCTION_NAME=${FUNCNAME[0]}
   if [ $# -ne  7 ]
   then
@@ -390,6 +392,7 @@ FUNCTION_NAME=${FUNCNAME[0]}
   else
     inf "  Status sent properly to slack channel: ${YELLOW}${SLACK_CHANNEL}"
   fi
+IFS=${COLLECTEDIFS}
 sleep 3
 }
 

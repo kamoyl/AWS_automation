@@ -520,8 +520,14 @@ then
         inf "    Mounting locally S3 buckets"
         for BUCKET in ${AWS_S3_BUCKETS[*]}
         do 
-          sudo mkdir -p /media/${BUCKET}
-          sudo s3fs ${BUCKET} /media/${BUCKET} -o iam_role=${CHECKED_INSTANCE_PROFILE_ROLE},allow_other,use_cache=/tmp/cache,default_acl=public-read,uid=30006,gid=30006
+          S3_BUCKET_MOUNT_CHECK=$(mount  | grep s3fs | grep ${BUCKET})
+          if [ -z ${S3_BUCKET_MOUNT_CHECK} ]
+          then
+            sudo mkdir -p /media/${BUCKET}
+            sudo s3fs ${BUCKET} /media/${BUCKET} -o iam_role=${CHECKED_INSTANCE_PROFILE_ROLE},allow_other,use_cache=/tmp/cache,default_acl=public-read,uid=30006,gid=30006
+          else
+            inf "      Bucket: ${YELLOW}${BUCKET}${CYAN} is already mounted"
+          fi
         done
       fi
     ) &

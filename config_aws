@@ -451,7 +451,7 @@ aws_list-profiles()
               inf "      Role: ${YELLOW}${ROLE_NAME}${CYAN} has policy:"
               for POLICY_NAME in $(jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")
               do
-                inf "      ${DARK_GREEN}${POLICY_NAME}${CYAN} attached to it"
+                inf "        ${DARK_GREEN}${POLICY_NAME}${CYAN} attached to it"
                 if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
                 then
                   POLICY_ARN=$(jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")

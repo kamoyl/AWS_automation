@@ -520,7 +520,7 @@ then
         inf "    Mounting locally S3 buckets"
         #for BUCKET in ${AWS_S3_BUCKETS[*]}
         #do 
-          S3_BUCKET_MOUNT_CHECK=$(mount  | grep s3fs | grep -w ${S3_BUCKET})
+          S3_BUCKET_MOUNT_CHECK=$(mount  | grep s3fs | grep -w ${S3_BUCKET} | awk '{print $3}')
           if [ -z ${S3_BUCKET_MOUNT_CHECK} ]
           then
             sudo mkdir -p /media/${S3_BUCKET}

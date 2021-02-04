@@ -17,6 +17,7 @@ fi
 
 START_AWS_COLLECTINGDATA_TIME=$(date +%s.%4N)
 aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-key-pairs                               > "${TMP}/${AWS_EC2_KEYPAIRS}_full.json"        2>"${LOG}/${AWS_EC2_KEYPAIRS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} kms             list-aliases                                     > "${TMP}/${AWS_KMS_ALIASES}_full.json"         2>"${LOG}/${AWS_KMS_ALIASES}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-instances                               > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json"   2>"${LOG}/${AWS_INSTANCES_DETAILS}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-volumes                                 > "${TMP}/${AWS_VOLS_DETAILS}_full.json"        2>"${LOG}/${AWS_VOLS_DETAILS}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-subnets                                 > "${TMP}/${AWS_SUBNETS_DETAILS}_full.json"     2>"${LOG}/${AWS_SUBNETS_DETAILS}.log" &

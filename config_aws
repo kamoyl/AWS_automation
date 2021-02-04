@@ -89,6 +89,7 @@ AWS_VOLS_DETAILS="aws_EC2_vols_${CURRENT_TIMESTAMP}"
 AWS_VPCS="aws_vpcs_${CURRENT_TIMESTAMP}"
 AWS_SNS_TOPICS="aws_sns-topics_${CURRENT_TIMESTAMP}"
 AWS_SNS_SUBSC="aws_sns-sunscriptions_${CURRENT_TIMESTAMP}"
+AWS_KMS_ALIASES="aws_kms_aliases_${CURRENT_TIMESTAMP}"
 SECURITY_GROUP_LAMBDA_NAME="${AWS_COMMON_NAME}_lambda_ec2-sec_group"
 if [ ! -z ${EXTERNAL_INET_IP} ]
 then
@@ -307,16 +308,16 @@ aws_newest_ami()
     if [[ ${IMAGE_STATE} == "available" ]]
     then
       AWS_AMI_ID="${LATEST_AMI_ID}"
-      inf "    And it is available..."
+      inf "    And it is ${GREEN}available${CYAN}..."
     elif [[ ${IMAGE_STATE} == "failed"  ]]
     then
-      error "    Image: ${BROWN}${LATEST_AMI_ID}${RED} is in a state: failed"
+      error "    Image: ${BROWN}${LATEST_AMI_ID}${RED} is in a state: ${RED}failed"
       AMI_FAILED_REASON=$(jq -r --arg ImageId ${LATEST_AMI_ID} '.Images[] | select(.ImageId == $ImageId) | .StateReason.Code' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
       error "      Reason: ${WINE}${AMI_FAILED_REASON}"
       failed
     elif [[ ${IMAGE_STATE} == "pending"  ]]
     then
-      warn "    Image: ${BROWN}${LATEST_AMI_ID}${WINE} is in status pending, waiting for state change"
+      warn "    Image: ${BROWN}${LATEST_AMI_ID}${WINE} is in status ${ORANGE}pending${WINE}, waiting for state change"
       while [[ $(aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-images ${AWS_PROFILE_USE_CHECK[*]} --image-ids  ${LATEST_AMI_ID} | jq -r '.Images[].State') == "available" ]]
       do
         for NUMBER in {1..100}
@@ -329,7 +330,7 @@ aws_newest_ami()
     fi
     if [ ${AWS_AMI_IMAGE_AMOUNT} -ge 3 ]
     then
-      debug "      And the oldest seems to be this one: ${BROWN}${OLDEST_AMI_ID}"
+      debug "      And the oldest seems to be this one: ${BROWN}${OLDEST_AMI_ID}${BLUE}, among: ${BROWN}${AWS_AMI_IMAGE_AMOUNT}"
     fi
   else
     error "  There is no AMI(s), exitting"
@@ -519,24 +520,35 @@ aws_list-securitygroups()
 
 aws_AMI_create()
 {
-  if [ $# -ne 2 ]
+  if [ $# -ne 3 ]
   then
-    error "Function ${LIME}${FUNCNAME[0]}${RED} needs one parameter: ${YELLOW}(1)InstanceId, (2)AmiName"
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs one parameter: ${YELLOW}(1)InstanceId, (2)AmiName, (3)description"
     ERROR_CODE="1"
     failed
   else
     EC2_INSTANCE_ID="${1}"
     AMI_NAME=${2}
+    AMI_DESCRIPTION="${3}"
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 create-image --instance-id ${EC2_INSTANCE_ID} --name "${AMI_NAME}_${CURRENT_TIMESTAMP}" --description "${AWS_NAMES_PREFIX} AMI" > "${TMP}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}_full.json"
-  #ToDo: slack_notification (1)slack channel, (2) slack notification title, (3) slack notificatio text, (4)icon_emoji, (5) slack notification color, (6) footer url, (7) footer link
-  AMI_ID=$(jq -r 'ImageId' "${TMP}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}_full.json")
-  if [[ ${AWS_OWNER_ID} == "623623120519" ]]
+  inf "${MAGENTA}Creating AMI, based on instance: ${YELLOW}${EC2_INSTANCE_ID}"
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 create-image --instance-id ${EC2_INSTANCE_ID} --name "${AMI_NAME}_${CURRENT_TIMESTAMP}" --description ${AMI_DESCRIPTION} > "${TMP}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}_full.json" 2>"${LOG}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}.log"
+  ERROR_CODE="$?"
+  if [ ${ERROR_CODE} -eq 0 ]
   then
-    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 modify-image-attribute --image-id ${AMI_ID} --launch-permission "Add=[{UserId=365117780834}]"
-  elif [[ ${AWS_OWNER_ID} == "365117780834" ]]
-  then
-    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 modify-image-attribute --image-id ${AMI_ID} --launch-permission "Add=[{UserId=623623120519}]"
+    AMI_ID=$(jq -r 'ImageId' "${TMP}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}_full.json")
+    inf "  AMI: ${YELLOW}${AMI_ID}${CYAN} has just been created"
+    slack_notification "${SLACK_CHANNEL_AWS}" "AMI: ${AMI_ID} created" "based on EC2 instance: ${EC2_INSTANCE_ID}" ":dvd:" "good" "${AWS_LOGIN_URL}" "AWS log in:"
+    if [[ ${AWS_OWNER_ID} == "623623120519" ]]
+    then
+      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 modify-image-attribute --image-id ${AMI_ID} --launch-permission "Add=[{UserId=365117780834}]"
+    elif [[ ${AWS_OWNER_ID} == "365117780834" ]]
+    then
+      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 modify-image-attribute --image-id ${AMI_ID} --launch-permission "Add=[{UserId=623623120519}]"
+    fi
+  else
+    error "  AMI cannot be created..."
+    debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}.log"
+    debug "      $(cat "${LOG}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}.log")"
   fi
 }
 
@@ -576,6 +588,75 @@ aws_instance_removal()
     source "${TMP}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination_slack.in" > "${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination_slack.log" 2>&1
   else
     failed
+  fi
+}
+
+aws_instance_create()
+{
+  if [ $# -ne 5 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs five parameters: ${YELLOW}(1)AMI ID, (2) INSTANCE TYPE, (3) KEY_NAME, (4) SUBNET_ID, (5) SECURITY_GROUP_ID"
+    ERROR_CODE="1"
+    failed
+  else
+    AMI_ID=${1}
+    INSTANCE_TYPE=${2}
+    USER_KEYNAME=${3}
+    NET_ID=${4}
+    SEC_GROUP_ID=${5}
+  fi
+  inf "${MAGENTA}Creating new instance based on AMI: ${YELLOW}${AMI_ID}${MAGENTA} and instance_type ${LIME}${INSTANCE_TYPE}${MAGENTA} in ${DARK_GREEN}${SEC_GROUP_ID}${MAGENTA} security group ID"
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 run-instances --image-id ${AMI_ID} --count 1 --instance-type ${INSTANCE_TYPE} --key-name ${USER_KEYNAME} --subnet-id ${NET_ID} --security-group-ids ${SEC_GROUP_ID} > "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json" 2>"${LOG}/${AWS_INSTANCES_DETAILS}_run.log" & CREATE_INSTANCE_PID="$!"
+  while [[ -n $(jobs -r) ]]
+  do
+    for NUMBER in {1..100}
+    do
+      sleep 0.1
+      ProgressBar ${NUMBER} 100
+    done
+    printf '\n'
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -ne 0 ]
+    then
+      error "  Instance cannot be created, exiting"
+      debug "    LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCES_DETAILS}_run.log"
+      debug "      $(cat "${LOG}/${AWS_INSTANCES_DETAILS}_run.log")"
+      failed
+    fi
+  done
+  AWS_INSTANCE_DETAILS_PUBLIC_IP=$(jq -r '.Instances[].PublicIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
+  AWS_INSTANCE_DETAILS_IP=$(jq -r '.Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
+  AWS_INSTANCE_DETAILS_ID=$(jq -r '.Instances[].InstanceId' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-instances > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" 2>"${LOG}/${AWS_INSTANCES_DETAILS}.log"
+}
+
+aws_instance_monitoring()
+{
+  if [ $# -ne 1 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs one parameter: ${YELLOW}(1)INSTANCE ID"
+    ERROR_CODE="1"
+    failed
+  else
+    INSTANCE_ID=${1}
+  fi
+  INSTANCE_MONITORING_CHECK=$(jq -r --arg instance_id ${INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $instance_id) | .Monitoring.State' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+  if [[ ${INSTANCE_MONITORING_CHECK} == "disabled" ]]
+  then
+    inf "  Enabling instance ${YELLOW}${INSTANCE_ID}${ORANGE} monitoring"
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 monitor-instances --instance-ids ${INSTANCE_ID} > "${TMP}/${AWS_INSTANCES_DETAILS}_monitoring_enable.json" 2>"${LOG}/${AWS_INSTANCES_DETAILS}_monitoring_enable.log"
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -ne 0 ]
+    then
+      error "    Instance ${YELLOW}${INSTANCE_ID}${ORANGE} monitoring${RED} cannot be enabled..."
+      debug "      LOG FILE: ${YELLOW}${LOG}/${AWS_INSTANCES_DETAILS}_monitoring_enable.log"
+      debug "        $(cat "${LOG}/${AWS_INSTANCES_DETAILS}_monitoring_enable.log")"
+    fi
+  elif [[ ${INSTANCE_MONITORING_CHECK} == "enabled" ]]
+  then
+    inf "    ${ORANGE}Monitoring${CYAN} of instance ${YELLOW}${INSTANCE_ID}${CYAN} is already enabled"
+  else
+    warn "    ${ORANGE}Monitoring${CYAN} of instance is in state: ${ORANGE}${INSTANCE_MONITORING_CHECK}"
   fi
 }
 

@@ -23,6 +23,7 @@ BROWN=$(echo -e "\x1b[38;2;210;100;000m")
 DARK_GREEN=$(echo -e "\x1b[38;2;50;200;100m")
 LIGHT_BLUE=$(echo -e "\x1b[38;2;50;200;240m")
 LIGHT_YELLOW=$(echo -e "\x1b[38;2;250;250;0m")
+ORANGE=$(echo -e "\x1b[38;2;255;127;000m")
 
 #Internal Field Separator
 #debug "ORIGIFS=$' ^I\n'" #<space><tab><new line>

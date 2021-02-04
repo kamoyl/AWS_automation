@@ -173,12 +173,12 @@ else
   warn "  There is no routing table(s)"
 fi
 #subnets
-inf ""
-inf "${MAGENTA}AWS subnets:"
 if [ -s "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" ]
 then
   if [[ ${VERBOSE} == yes ]]
   then
+    inf ""
+    inf "${MAGENTA}AWS subnets:"
     for AWS_SUBNET_ID in $(jq -r '.Subnets[] | .SubnetId' "${TMP}/${AWS_SUBNETS_DETAILS}_full.json")
     do
       (
@@ -208,6 +208,7 @@ then
     AWS_INSTANCE_IP=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
     AWS_INSTANCE_PUBLIC_IP=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .PublicIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
     AWS_INSTANCE_LAUNCH=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .LaunchTime' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
+    AWS_INSTANCE_MONITORING_CHECK=$(jq -r --arg aws_instance_id ${AWS_INSTANCE_ID} '.Reservations[].Instances[] | select(.InstanceId == $aws_instance_id) | .Monitoring | .State' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json")
     AWS_INSTANCE_LAUNCH_DATE=$(echo ${AWS_INSTANCE_LAUNCH} | awk -FT '{print $1}')
     AWS_INSTANCE_LAUNCH_TIME=$(echo ${AWS_INSTANCE_LAUNCH} | awk -FT '{print $2}' | awk -F\+ '{print $1}')
     AWS_INSTANCE_LSECONDS=$(date -d"${AWS_INSTANCE_LAUNCH_DATE}T${AWS_INSTANCE_LAUNCH_TIME}" +%s)
@@ -242,10 +243,10 @@ then
     if [[ ${AWS_INSTANCE_STATE} == "stopped" ]]
     then
       inf "    state: ${RED}${AWS_INSTANCE_STATE^^}"
-      inf "        Private IP: ${LIME}${AWS_INSTANCE_IP}"
+      inf "      Private IP: ${LIME}${AWS_INSTANCE_IP}"
       if [ -z ${AWS_INSTANCE_PUBLIC_IP} ] || [[ ${AWS_INSTANCE_PUBLIC_IP} == "null" ]]
       then
-        inf "        Public  IP: ${WINE}none"
+        inf "      Public  IP: ${WINE}none"
       fi
     elif [[ ${AWS_INSTANCE_STATE} == "running" ]]
     then
@@ -316,6 +317,7 @@ then
         warn "    ${YELLOW}${AWS_INSTANCE_ID}${WINE} is actual instance, omitting"
       fi
     fi
+    aws_instance_monitoring ${AWS_INSTANCE_ID}
   done
 else
   if [[ ${VERBOSE} == yes ]]
@@ -340,6 +342,11 @@ then
     VOL_CREATE_SECONDS=$(echo "${NOW_SECONDS} - ${VOL_CREATE_LSECONDS}" | bc)
     VOL_CREATE_DAYS=$(echo "${VOL_CREATE_SECONDS} / 3600 / 24" | bc)
     VOL_EC2_SNAPSHOT_ID=$(jq -r --arg aws_vol_id ${AWS_VOL_ID} '.Volumes[] | select(.VolumeId == $aws_vol_id) | .SnapshotId' "${TMP}/${AWS_VOLS_DETAILS}_full.json")
+    VOL_EC2_SNAPSHOT_ENCRYPT_CHECK=$(jq -r --arg aws_vol_id ${AWS_VOL_ID} '.Volumes[] | select(.VolumeId == $aws_vol_id) | .Encrypted' "${TMP}/${AWS_VOLS_DETAILS}_full.json")
+    if [[ ${VOL_EC2_SNAPSHOT_ENCRYPT_CHECK} == "true" ]]
+    then
+      VOL_EC2_SNAPSHOT_ENCRYPTKEY=$(jq -r --arg aws_vol_id ${AWS_VOL_ID} '.Volumes[] | select(.VolumeId == $aws_vol_id) | .KmsKeyId' "${TMP}/${AWS_VOLS_DETAILS}_full.json")
+    fi
     if [ ${VOL_CREATE_DAYS} -eq 1 ]
     then
       WHEN_RUN="yesterday"
@@ -362,6 +369,10 @@ then
       inf "  Volume: ${YELLOW}${AWS_VOL_ID}${GREEN} is attached ${CYAN}to instance: ${YELLOW}${VOL_INSTANCE_ID}"
       inf "    created: ${YELLOW}${WHEN_RUN}"
       inf "      EC2 snapshot: ${BROWN}${VOL_EC2_SNAPSHOT_ID}"
+      if [[ ${VOL_EC2_SNAPSHOT_ENCRYPT_CHECK} == "true" ]]
+      then
+        inf "        encrypted with KeyID: ${LIGHT_BLUE}${VOL_EC2_SNAPSHOT_ENCRYPTKEY}"
+      fi
     fi
     if [[ ${CLEANING} == yes ]]
     then
@@ -377,7 +388,7 @@ then
       AWS_S3_SNAPSHOTS=$(jq -r --arg volume_id ${AWS_VOL_ID} '.Snapshots[] | select(.VolumeId == $volume_id) |.SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json" | head -n1)
       if [ -z ${AWS_S3_SNAPSHOTS} ]
       then
-        warn "        S3 snapshot(s) doesn't exist"
+        warn "          S3 snapshot(s) doesn't exist"
       else
         for AWS_SNAPSHOT_ID in $(jq -r --arg volume_id ${AWS_VOL_ID} '.Snapshots[] | select(.VolumeId == $volume_id) | .SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
         do
@@ -387,7 +398,7 @@ then
           AWS_S3_SNAPSHOT_CREATED_DATE=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $1}')
           AWS_S3_SNAPSHOT_CREATED_TIME=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $2}' | awk -F\. '{print $1}')
           AWS_S3_SNAPSHOT_VOLUME_ID=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .VolumeId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
-          inf "        S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN} (${DARK_GREEN}${AWS_S3_SNAPSHOT_DESCRIPTION}${CYAN})"
+          inf "          S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN} (${DARK_GREEN}${AWS_S3_SNAPSHOT_DESCRIPTION}${CYAN})"
         done
       fi
     fi
@@ -429,6 +440,11 @@ then
         AMI_ID_SNAPSHOT=$(jq -r --arg snap_id "${AWS_SNAPSHOT_ID}" '.Images[] | select(.BlockDeviceMappings[].Ebs.SnapshotId == $snap_id) | .ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
       fi
           AWS_S3_SNAPSHOT_DESCRIPTION=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Description' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          AWS_S3_SNAPSHOT_ENCRYPT_CHECK=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Encrypted' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          if [[ ${AWS_S3_SNAPSHOT_ENCRYPT_CHECK} == "true" ]]
+          then
+            AWS_S3_SNAPSHOT_ENCRYPTKEY=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .KmsKeyId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+          fi
           AWS_S3_SNAPSHOT_PROGRESS=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Progress' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
           AWS_S3_SNAPSHOT_CREATED=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .StartTime' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
           AWS_S3_SNAPSHOT_CREATED_DATE=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $1}')
@@ -437,12 +453,20 @@ then
       if [ -z ${AMI_ID_SNAPSHOT} ]
       then
         inf "  S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} from a volume: ${YELLOW}${VOLUME_ID}${CYAN} (created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN})"
+        if [[ ${AWS_S3_SNAPSHOT_ENCRYPT_CHECK} == "true" ]]
+        then
+          inf "    S3 snapshot is encrypted with KeyID: ${LIGHT_BLUE}${AWS_S3_SNAPSHOT_ENCRYPTKEY}"
+        fi
         if [[ ${CLEANING} == yes ]]
         then
           aws_snapshot_removal ${AWS_SNAPSHOT_ID}
         fi
       else
-        inf "  S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} from a volume: ${YELLOW}${VOLUME_ID}${CYAN} which is an AMI: ${YELLOW}${AMI_ID_SNAPSHOT}${CYAN} (created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN})"
+        if [[ ${AWS_S3_SNAPSHOT_ENCRYPT_CHECK} == "true" ]]
+        then
+          inf "  S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} from a volume: ${YELLOW}${VOLUME_ID}${CYAN} which is an AMI: ${YELLOW}${AMI_ID_SNAPSHOT}${CYAN} (created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN})"
+          inf "    S3 snapshot is encrypted with KeyID: ${LIGHT_BLUE}${AWS_S3_SNAPSHOT_ENCRYPTKEY}"
+        fi
       fi
     done
   fi
@@ -456,7 +480,6 @@ inf ""
 inf "${MAGENTA}EC2 AMIs"
 if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | head -n1) ]
 then
-  debug "  #### TESTING - amount of AMIs: ${WINE}${AWS_AMI_IMAGE_AMOUNT}${BLUE} ####"
   aws_newest_ami
   #ToDo: automatically remove older AMI if more then 2
   #ToDo:add a lambda process once a week/month to create newest API
@@ -656,6 +679,23 @@ then
   fi
 fi
 #AWS KeyPairs
+
+#AWS KMS
+if [ -s "${TMP}/${AWS_KMS_ALIASES}_full.json" ]
+then
+  inf ""
+  inf "${MAGENTA}KMS Keys:"
+  for TARGET_KEY_ID in $(jq -r '.Aliases[] | .TargetKeyId' "${TMP}/${AWS_KMS_ALIASES}_full.json")
+  do
+    if [[ ${TARGET_KEY_ID} != "null" ]] || [ -z ${TARGET_KEY_ID} ]
+    then
+      TARGET_KEY_ALIAS_NAME=$(jq -r --arg target_key_id ${TARGET_KEY_ID} '.Aliases[] | select(.TargetKeyId == $target_key_id) |.AliasName' "${TMP}/${AWS_KMS_ALIASES}_full.json")
+      inf "  KMS KeyID: ${LIGHT_BLUE}${TARGET_KEY_ID}${CYAN}, with an KeyAlias: ${BROWN}${TARGET_KEY_ALIAS_NAME}"
+    fi
+  done
+fi
+
+#AWS KMS
 
 #AWS Roles and policies and instance profiles
 if [ -s "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json" ]

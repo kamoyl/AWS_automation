@@ -296,10 +296,9 @@ aws_key_removal()
 
 aws_newest_ami()
 {
-  inf ""
-  inf "${MAGENTA}Trying to figure it out the newest AMI:"
   if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ]
   then
+    inf "Trying to figure it out the newest AMI:"
     AWS_AMI_IMAGE_AMOUNT=$(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | wc -l)
     LATEST_AMI_ID=$(jq -r '.Images[] | .CreationDate + " " + .ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | sort | tail -n1 | awk '{print $2}')
     OLDEST_AMI_ID=$(jq -r '.Images[] | .CreationDate + " " + .ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | sort | head -n1 | awk '{print $2}')
@@ -331,10 +330,13 @@ aws_newest_ami()
     if [ ${AWS_AMI_IMAGE_AMOUNT} -ge 3 ]
     then
       debug "      And the oldest seems to be this one: ${BROWN}${OLDEST_AMI_ID}${BLUE}, among: ${BROWN}${AWS_AMI_IMAGE_AMOUNT}"
+      if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
+      then
+        aws ${AWS_PROFILE_USE_CHECK[*]} ec2 deregister-image --image-id ${OLDEST_AMI_ID} > "${TMP}/${AWS_AMIS_DETAILS}_${OLDEST_AMI_ID}_rm.json" 2> "${LOG}/${AWS_AMIS_DETAILS}_${OLDEST_AMI_ID}_rm.log"
+      fi
     fi
   else
     error "  There is no AMI(s), exitting"
-    #ToDo: picking up examples AMI: 
     failed
   fi
 }
@@ -522,7 +524,7 @@ aws_AMI_create()
 {
   if [ $# -ne 3 ]
   then
-    error "Function ${LIME}${FUNCNAME[0]}${RED} needs one parameter: ${YELLOW}(1)InstanceId, (2)AmiName, (3)description"
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs three parameters: ${YELLOW}(1)InstanceId, (2)AmiName, (3)description"
     ERROR_CODE="1"
     failed
   else
@@ -535,7 +537,7 @@ aws_AMI_create()
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
-    AMI_ID=$(jq -r 'ImageId' "${TMP}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}_full.json")
+    AMI_ID=$(jq -r '.ImageId' "${TMP}/${AWS_AMIS_DETAILS}_${EC2_INSTANCE_ID}_full.json")
     inf "  AMI: ${YELLOW}${AMI_ID}${CYAN} has just been created"
     slack_notification "${SLACK_CHANNEL_AWS}" "AMI: ${AMI_ID} created" "based on EC2 instance: ${EC2_INSTANCE_ID}" ":dvd:" "good" "${AWS_LOGIN_URL}" "AWS log in:"
     if [[ ${AWS_OWNER_ID} == "623623120519" ]]
@@ -803,7 +805,7 @@ aws_snapshot_removal()
         ERROR_CODE="$?"
         if [ ${ERROR_CODE} -eq 0 ]
         then
-          inf "        ${WINE}Snapshot: ${YELLOW}${AWS_SNAPSHOT_ID}${WINE} removed properly"
+          inf "      ${WINE}Snapshot: ${YELLOW}${AWS_SNAPSHOT_ID}${WINE} removed properly"
           SLACK_REMOVE_VOLUME="
             {\\\"channel\\\": \\\"${SLACK_CHANNEL_AWS}\\\"
               , \\\"username\\\": \\\"${USER}\\\"

@@ -480,10 +480,7 @@ inf ""
 inf "${MAGENTA}EC2 AMIs"
 if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | head -n1) ]
 then
-  aws_newest_ami
-  #ToDo: automatically remove older AMI if more then 2
   #ToDo:add a lambda process once a week/month to create newest API
-  #aws ec2 create-image --instance-id $(cat /sys/devices/virtual/dmi/id/board_asset_tag) --name "td_jenkins_v34" --description "only for testing purposes"
   for AWS_AMI_IMAGE_ID in $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
   do
     AWS_AMI_NAME=$(jq -r --arg image_id ${AWS_AMI_IMAGE_ID} '.Images[] | select(.ImageId == $image_id) | .Name' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
@@ -519,6 +516,7 @@ then
               },
             " >> "${TMP}/${AWS_AMIS_DETAILS}_slack.out"
   done
+  aws_newest_ami
 else
   warn "  There is no EC2 AMIs"
 fi

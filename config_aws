@@ -357,17 +357,18 @@ aws_list-roles()
       jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Roles[] | select(.Arn | contains("aws-service-role") | not) | select(.Arn | contains($aws_default_name) | not)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_NAMES_PREFIX}_full.json" 2>"${LOG}/${AWS_ROLES}_${AWS_NAMES_PREFIX}.log"
       for AWS_IAM_ROLE_NAME in $(jq -r '.RoleName' "${TMP}/${AWS_ROLES}_${AWS_NAMES_PREFIX}_full.json")
       do
+        (
         AWS_IAM_ROLE_ARN="$(jq -r --arg aws_iam_role_name ${AWS_IAM_ROLE_NAME} '.Roles[] | select(.RoleName == $aws_iam_role_name) | .Arn' "${TMP}/${AWS_ROLES}_full.json")"
         AWS_IAM_ROLE_ID=$(jq -r --arg aws_iam_role_name ${AWS_IAM_ROLE_NAME} '.Roles[] | select(.RoleName == $aws_iam_role_name) | .RoleId' "${TMP}/${AWS_ROLES}_full.json")
         inf "  Role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN}, with ARN: ${LIME}${AWS_IAM_ROLE_ARN}${CYAN} exists"
         AWS_IAM_POLICY_NAME_CHECK=$(aws_list-attached-role-policies ${AWS_IAM_ROLE_NAME} && jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}_full.json" | head -n1)
         if [ -z ${AWS_IAM_POLICY_NAME_CHECK} ]
         then
-          inf "    and there is no policy attached to it"
+          inf "    role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN} has no policy attached to it"
           INSTANCE_PROFILE_ROLE_NAME=$(aws_list-instance-profiles-for-role "${AWS_IAM_ROLE_NAME}" && jq -r '.InstanceProfiles[].InstanceProfileName' "${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_ROLE_NAME}_full.json")
           if [ ! -z ${INSTANCE_PROFILE_ROLE_NAME} ]
           then
-            inf "      and role: ${YELLOW}${INSTANCE_PROFILE_ROLE_NAME}${CYAN} is attached to instance profile: ${DARK_GREEN}${INSTANCE_PROFILE_ROLE_NAME}"
+            inf "      role: ${YELLOW}${INSTANCE_PROFILE_ROLE_NAME}${CYAN} is attached to instance profile: ${DARK_GREEN}${INSTANCE_PROFILE_ROLE_NAME}"
             if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
             then
               aws_removing_role_from_instance_profile "${AWS_IAM_ROLE_NAME}" "${INSTANCE_PROFILE_ROLE_NAME}"
@@ -375,7 +376,7 @@ aws_list-roles()
               aws_instance-profile_removal "${INSTANCE_PROFILE_ROLE_NAME}"
             fi
           else
-	        inf "      and it is not attached to any instance profile"
+	        inf "      role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN} is not attached to any instance profile"
             if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
             then
               aws_role_removal "${AWS_IAM_ROLE_NAME}"
@@ -385,7 +386,7 @@ aws_list-roles()
           for AWS_IAM_POLICY_NAME in $(jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${AWS_IAM_ROLE_NAME}_full.json")
           do
             AWS_IAM_ROLE_POLICY_ARN=$(aws ${AWS_PROFILE_USE_CHECK[*]} iam list-policies | jq -r --arg policy_name ${AWS_IAM_POLICY_NAME} '.Policies[] | select(.PolicyName == $policy_name) | .Arn')
-            inf "    and there is a policy attached to it: ${YELLOW}${AWS_IAM_POLICY_NAME}${CYAN}, with ARN: ${LIME}${AWS_IAM_ROLE_POLICY_ARN}"
+            inf "    role: ${YELLOW}${AWS_IAM_ROLE_NAME}${CYAN} has a policy attached to it: ${YELLOW}${AWS_IAM_POLICY_NAME}${CYAN}, with ARN: ${LIME}${AWS_IAM_ROLE_POLICY_ARN}"
             if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
             then
               aws_policy_removal "${AWS_IAM_ROLE_POLICY_ARN}"
@@ -393,7 +394,7 @@ aws_list-roles()
             INSTANCE_PROFILE_ROLE_NAME=$(aws_list-instance-profiles-for-role "${AWS_IAM_ROLE_NAME}" && jq -r '.InstanceProfiles[].InstanceProfileName' "${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_ROLE_NAME}_full.json")
             if [ ! -z ${INSTANCE_PROFILE_ROLE_NAME} ]
             then
-              inf "      and role: ${YELLOW}${INSTANCE_PROFILE_ROLE_NAME}${CYAN} is attached to instance profile: ${DARK_GREEN}${INSTANCE_PROFILE_ROLE_NAME}"
+              inf "      role: ${YELLOW}${INSTANCE_PROFILE_ROLE_NAME}${CYAN} is attached to instance profile: ${DARK_GREEN}${INSTANCE_PROFILE_ROLE_NAME}"
               if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
               then
                 aws_removing_role_from_instance_profile "${AWS_IAM_ROLE_NAME}" "${INSTANCE_PROFILE_ROLE_NAME}"
@@ -401,7 +402,7 @@ aws_list-roles()
                 aws_instance-profile_removal "${INSTANCE_PROFILE_ROLE_NAME}"
               fi
             else
-	          inf "      and it is not attached to any instance profile"
+	          warn "      role: ${YELLOW}${INSTANCE_PROFILE_ROLE_NAME}${WINE} is not attached to any instance profile"
               if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
               then
                 aws_role_removal "${AWS_IAM_ROLE_NAME}"
@@ -409,7 +410,9 @@ aws_list-roles()
             fi
           done
         fi
+        ) &
       done
+      wait
     fi
   else
     error "  Roles couldn't be collected properly, exiting"
@@ -434,49 +437,52 @@ aws_list-profiles()
     else
       for INSTANCE_PROFILE_NAME in $(jq -r '.InstanceProfiles[].InstanceProfileName' "${TMP}/${AWS_INSTANCE_PROFILES}_full.json")
       do
-        inf "  profile: ${YELLOW}${INSTANCE_PROFILE_NAME}${CYAN} exists"
-        INSTANCE_PROFILE_ROLE_NAME=$(aws ${AWS_PROFILE_USE_CHECK[*]} iam get-instance-profile --instance-profile-name ${INSTANCE_PROFILE_NAME} | jq -r '.InstanceProfile.Roles[].RoleName')
-        if [ ! -z ${INSTANCE_PROFILE_ROLE_NAME} ]
-        then
-          for ROLE_NAME in ${INSTANCE_PROFILE_ROLE_NAME}
-          do
-            inf "    Role: ${YELLOW}${ROLE_NAME}${CYAN} is attached to instance profile: ${DARK_GREEN}${INSTANCE_PROFILE_NAME}"
-            AWS_IAM_POLICY_NAME=$(aws_list-attached-role-policies ${ROLE_NAME} && jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")
-            if [ -z $(head -n1 <(echo ${AWS_IAM_POLICY_NAME})) ]
-            then
-              inf "      And role: ${YELLOW}${ROLE_NAME}${CYAN} has no policy attached"
-              if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
+        (
+          inf "  profile: ${YELLOW}${INSTANCE_PROFILE_NAME}${CYAN} exists"
+          INSTANCE_PROFILE_ROLE_NAME=$(aws ${AWS_PROFILE_USE_CHECK[*]} iam get-instance-profile --instance-profile-name ${INSTANCE_PROFILE_NAME} | jq -r '.InstanceProfile.Roles[].RoleName')
+          if [ ! -z ${INSTANCE_PROFILE_ROLE_NAME} ]
+          then
+            for ROLE_NAME in ${INSTANCE_PROFILE_ROLE_NAME}
+            do
+              inf "    Role: ${YELLOW}${ROLE_NAME}${CYAN} is attached to instance profile: ${DARK_GREEN}${INSTANCE_PROFILE_NAME}"
+              AWS_IAM_POLICY_NAME=$(aws_list-attached-role-policies ${ROLE_NAME} && jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")
+              if [ -z $(head -n1 <(echo ${AWS_IAM_POLICY_NAME})) ]
               then
-                aws_removing_role_from_instance_profile "${ROLE_NAME}" "${INSTANCE_PROFILE_NAME}"
-                aws_role_removal "${ROLE_NAME}"
-              fi
-            else
-              inf "      Role: ${YELLOW}${ROLE_NAME}${CYAN} has policy:"
-              for POLICY_NAME in $(jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")
-              do
-                inf "        ${DARK_GREEN}${POLICY_NAME}${CYAN} attached to it"
+                inf "      And role: ${YELLOW}${ROLE_NAME}${CYAN} has no policy attached"
                 if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
                 then
-                  POLICY_ARN=$(jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")
-                  aws_policy_removal "${POLICY_ARN}"
                   aws_removing_role_from_instance_profile "${ROLE_NAME}" "${INSTANCE_PROFILE_NAME}"
                   aws_role_removal "${ROLE_NAME}"
                 fi
-              done
+              else
+                inf "      Role: ${YELLOW}${ROLE_NAME}${CYAN} has policy:"
+                for POLICY_NAME in $(jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")
+                do
+                  inf "        ${DARK_GREEN}${POLICY_NAME}${CYAN} attached to it"
+                  if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
+                  then
+                    POLICY_ARN=$(jq -r '.AttachedPolicies[].PolicyName' "${TMP}/${AWS_POLICIES_ATTACHED_ROLE}_${ROLE_NAME}_full.json")
+                    aws_policy_removal "${POLICY_ARN}"
+                    aws_removing_role_from_instance_profile "${ROLE_NAME}" "${INSTANCE_PROFILE_NAME}"
+                    aws_role_removal "${ROLE_NAME}"
+                  fi
+                done
+              fi
+            done
+            if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
+            then
+              aws_instance-profile_removal "${INSTANCE_PROFILE_NAME}"
             fi
-          done
-          if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
-          then
-            aws_instance-profile_removal "${INSTANCE_PROFILE_NAME}"
+          else
+            inf "    and there is no role attached to it"
+            if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
+            then
+              aws_instance-profile_removal "${INSTANCE_PROFILE_NAME}"
+            fi
           fi
-        else
-          inf "    and there is no role attached to it"
-          if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
-          then
-            aws_instance-profile_removal "${INSTANCE_PROFILE_NAME}"
-          fi
-        fi
+        ) &
       done
+      wait
     fi
   else
     error "  Instance profiles couldn't be collected properly, exiting"

@@ -434,41 +434,44 @@ then
   else
     for AWS_SNAPSHOT_ID in $(jq -r '.Snapshots[] | .SnapshotId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
     do
-      VOLUME_ID=$(jq -r --arg snap_id "${AWS_SNAPSHOT_ID}" '.Snapshots[] | select(.SnapshotId | contains($snap_id)) | .VolumeId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
-      if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ]
-      then
-        AMI_ID_SNAPSHOT=$(jq -r --arg snap_id "${AWS_SNAPSHOT_ID}" '.Images[] | select(.BlockDeviceMappings[].Ebs.SnapshotId == $snap_id) | .ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
-      fi
-          AWS_S3_SNAPSHOT_DESCRIPTION=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Description' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
-          AWS_S3_SNAPSHOT_ENCRYPT_CHECK=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Encrypted' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+      (
+        VOLUME_ID=$(jq -r --arg snap_id "${AWS_SNAPSHOT_ID}" '.Snapshots[] | select(.SnapshotId | contains($snap_id)) | .VolumeId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+        if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ]
+        then
+          AMI_ID_SNAPSHOT=$(jq -r --arg snap_id "${AWS_SNAPSHOT_ID}" '.Images[] | select(.BlockDeviceMappings[].Ebs.SnapshotId == $snap_id) | .ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+        fi
+        AWS_S3_SNAPSHOT_DESCRIPTION=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Description' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+        AWS_S3_SNAPSHOT_ENCRYPT_CHECK=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Encrypted' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+        if [[ ${AWS_S3_SNAPSHOT_ENCRYPT_CHECK} == "true" ]]
+        then
+          AWS_S3_SNAPSHOT_ENCRYPTKEY=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .KmsKeyId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+        fi
+        AWS_S3_SNAPSHOT_PROGRESS=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Progress' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+        AWS_S3_SNAPSHOT_CREATED=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .StartTime' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+        AWS_S3_SNAPSHOT_CREATED_DATE=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $1}')
+        AWS_S3_SNAPSHOT_CREATED_TIME=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $2}' | awk -F\. '{print $1}')
+        AWS_S3_SNAPSHOT_VOLUME_ID=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .VolumeId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+        if [ -z ${AMI_ID_SNAPSHOT} ]
+        then
+          inf "  S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} from a volume: ${YELLOW}${VOLUME_ID}${CYAN} (created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN})"
           if [[ ${AWS_S3_SNAPSHOT_ENCRYPT_CHECK} == "true" ]]
           then
-            AWS_S3_SNAPSHOT_ENCRYPTKEY=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .KmsKeyId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
+            inf "    S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} is encrypted with KeyID: ${LIGHT_BLUE}${AWS_S3_SNAPSHOT_ENCRYPTKEY}"
           fi
-          AWS_S3_SNAPSHOT_PROGRESS=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .Progress' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
-          AWS_S3_SNAPSHOT_CREATED=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .StartTime' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
-          AWS_S3_SNAPSHOT_CREATED_DATE=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $1}')
-          AWS_S3_SNAPSHOT_CREATED_TIME=$(echo ${AWS_S3_SNAPSHOT_CREATED} | awk -FT '{print $2}' | awk -F\. '{print $1}')
-          AWS_S3_SNAPSHOT_VOLUME_ID=$(jq -r --arg aws_snapshot_id ${AWS_SNAPSHOT_ID} '.Snapshots[] | select(.SnapshotId == $aws_snapshot_id) | .VolumeId' "${TMP}/${AWS_SNAPS_DETAILS}_full.json")
-      if [ -z ${AMI_ID_SNAPSHOT} ]
-      then
-        inf "  S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} from a volume: ${YELLOW}${VOLUME_ID}${CYAN} (created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN})"
-        if [[ ${AWS_S3_SNAPSHOT_ENCRYPT_CHECK} == "true" ]]
-        then
-          inf "    S3 snapshot is encrypted with KeyID: ${LIGHT_BLUE}${AWS_S3_SNAPSHOT_ENCRYPTKEY}"
+          if [[ ${CLEANING} == yes ]]
+          then
+            aws_snapshot_removal ${AWS_SNAPSHOT_ID}
+          fi
+        else
+          if [[ ${AWS_S3_SNAPSHOT_ENCRYPT_CHECK} == "true" ]]
+          then
+            inf "  S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} from a volume: ${YELLOW}${VOLUME_ID}${CYAN} which is an AMI: ${YELLOW}${AMI_ID_SNAPSHOT}${CYAN} (created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN})"
+            inf "    S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} is encrypted with KeyID: ${LIGHT_BLUE}${AWS_S3_SNAPSHOT_ENCRYPTKEY}"
+          fi
         fi
-        if [[ ${CLEANING} == yes ]]
-        then
-          aws_snapshot_removal ${AWS_SNAPSHOT_ID}
-        fi
-      else
-        if [[ ${AWS_S3_SNAPSHOT_ENCRYPT_CHECK} == "true" ]]
-        then
-          inf "  S3 snapshot: ${BROWN}${AWS_SNAPSHOT_ID}${CYAN} from a volume: ${YELLOW}${VOLUME_ID}${CYAN} which is an AMI: ${YELLOW}${AMI_ID_SNAPSHOT}${CYAN} (created ${WINE}${AWS_S3_SNAPSHOT_CREATED_DATE} at ${AWS_S3_SNAPSHOT_CREATED_TIME}${CYAN})"
-          inf "    S3 snapshot is encrypted with KeyID: ${LIGHT_BLUE}${AWS_S3_SNAPSHOT_ENCRYPTKEY}"
-        fi
-      fi
+      ) &
     done
+    wait
   fi
 else
   warn "  There is no S3 snapshot(s)"
@@ -685,14 +688,16 @@ then
   inf "${MAGENTA}KMS Keys:"
   for TARGET_KEY_ID in $(jq -r '.Aliases[] | .TargetKeyId' "${TMP}/${AWS_KMS_ALIASES}_full.json")
   do
-    if [[ ${TARGET_KEY_ID} != "null" ]] || [ -z ${TARGET_KEY_ID} ]
-    then
-      TARGET_KEY_ALIAS_NAME=$(jq -r --arg target_key_id ${TARGET_KEY_ID} '.Aliases[] | select(.TargetKeyId == $target_key_id) |.AliasName' "${TMP}/${AWS_KMS_ALIASES}_full.json")
-      inf "  KMS KeyID: ${LIGHT_BLUE}${TARGET_KEY_ID}${CYAN}, with an KeyAlias: ${BROWN}${TARGET_KEY_ALIAS_NAME}"
-    fi
+    (
+      if [[ ${TARGET_KEY_ID} != "null" ]] || [ -z ${TARGET_KEY_ID} ]
+      then
+        TARGET_KEY_ALIAS_NAME=$(jq -r --arg target_key_id ${TARGET_KEY_ID} '.Aliases[] | select(.TargetKeyId == $target_key_id) |.AliasName' "${TMP}/${AWS_KMS_ALIASES}_full.json")
+        inf "  KMS KeyID: ${LIGHT_BLUE}${TARGET_KEY_ID}${CYAN}, with an KeyAlias: ${BROWN}${TARGET_KEY_ALIAS_NAME}"
+      fi
+    ) &
   done
 fi
-
+wait
 #AWS KMS
 
 #AWS Roles and policies and instance profiles
@@ -705,6 +710,7 @@ then
   then
     for AWS_IAM_POLICY_NAME in $(jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name) | not) | .PolicyName' "${TMP}/${AWS_POLICIES}_full.json")
     do
+      (
       AWS_IAM_POLICY_ARN="$(jq -r --arg aws_iam_policy_name ${AWS_IAM_POLICY_NAME} '.Policies[] | select(.PolicyName == $aws_iam_policy_name) | .Arn' "${TMP}/${AWS_POLICIES}_full.json")"
       AWS_IAM_POLICY_ID=$(jq -r --arg aws_iam_policy_name ${AWS_IAM_POLICY_NAME} '.Policies[] | select(.PolicyName == $aws_iam_policy_name) | .PolicyId' "${TMP}/${AWS_POLICIES}_full.json")
       inf "  Policy: ${YELLOW}${AWS_IAM_POLICY_NAME}${CYAN}, with ARN: ${LIME}${AWS_IAM_POLICY_ARN}${CYAN} exists"
@@ -719,7 +725,7 @@ then
       else
         for AWS_IAM_ROLENAME in $(jq -r '.PolicyRoles[].RoleName' ${TMP}/${AWS_POLICY_ENTITIES}_${AWS_IAM_POLICY_NAME}_full.json)
         do
-          inf "    and it is attached to the role: ${YELLOW}${AWS_IAM_POLICY_NAME}"
+          inf "    Policy: ${YELLOW}${AWS_IAM_POLICY_NAME}${CYAN} is attached to the role: ${YELLOW}${AWS_IAM_POLICY_NAME}"
           if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
           then
             aws_detaching_policy_from_role ${AWS_IAM_POLICY_NAME} "${AWS_IAM_POLICY_ARN}"
@@ -737,12 +743,13 @@ then
           fi
         done
       fi
+      ) &
     done
   else
     warn "  There is no IAM policy"
   fi
 fi
-
+wait
 aws_list-roles
 
 aws_list-profiles
@@ -787,36 +794,38 @@ then
   else
     for AWS_LOG_NAME in $(jq -r '.logGroups[].logGroupName' "${TMP}/${AWS_LOGS}_full.json")
     do
-      AWS_LOGS_NAME=$(echo ${AWS_LOG_NAME} | awk -F\/ '{print $NF}')
-      inf "  Log group: ${BROWN}${AWS_LOG_NAME}"
-
-      RETENTION_LOGS_CHECKING=$(jq -r --arg aws_log_name ${AWS_LOG_NAME} '.logGroups[] | select(.logGroupName == $aws_log_name) | .retentionInDays' "${TMP}/${AWS_LOGS}_full.json")
-      if [[ ${RETENTION_LOGS_CHECKING} == null ]] || [ -z ${RETENTION_LOGS_CHECKING} ] || [ ${RETENTION_LOGS_CHECKING} -ne ${AWS_LOGS_RETENTION_DAYS} ]
-      then
-        inf "    Rentention policy to log group: ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days must be applied"
-        aws ${AWS_PROFILE_USE_CHECK[*]} logs put-retention-policy --log-group-name ${AWS_LOG_NAME} --retention-in-days ${AWS_LOGS_RETENTION_DAYS} > "${TMP}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.json" 2> "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"
-        ERROR_CODE="$?"
-        if [ ${ERROR_CODE} -eq 0 ]
+      (
+        AWS_LOGS_NAME=$(echo ${AWS_LOG_NAME} | awk -F\/ '{print $NF}')
+        inf "  Log group: ${BROWN}${AWS_LOG_NAME}"
+        RETENTION_LOGS_CHECKING=$(jq -r --arg aws_log_name ${AWS_LOG_NAME} '.logGroups[] | select(.logGroupName == $aws_log_name) | .retentionInDays' "${TMP}/${AWS_LOGS}_full.json")
+        if [[ ${RETENTION_LOGS_CHECKING} == null ]] || [ -z ${RETENTION_LOGS_CHECKING} ] || [ ${RETENTION_LOGS_CHECKING} -ne ${AWS_LOGS_RETENTION_DAYS} ]
         then
-          debug "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${BLUE} days applied properly"
+          inf "    Rentention policy to log group: ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days must be applied"
+          aws ${AWS_PROFILE_USE_CHECK[*]} logs put-retention-policy --log-group-name ${AWS_LOG_NAME} --retention-in-days ${AWS_LOGS_RETENTION_DAYS} > "${TMP}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.json" 2> "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"
+          ERROR_CODE="$?"
+          if [ ${ERROR_CODE} -eq 0 ]
+          then
+            debug "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${BLUE} days applied properly (to log group: ${BROWN}${AWS_LOG_NAME}"
+          else
+            error "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${RED} cannot be applied"
+            debug "        LOG_FILE=${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"
+            error "          $(cat "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log")"
+          fi
         else
-          error "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${RED} cannot be applied"
-          debug "        LOG_FILE=${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"
-          error "          $(cat "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log")"
+          inf "    Rentention policy to log group: ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days is already assigned"
         fi
-      else
-        inf "    Rentention policy to log group: ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days is already assigned"
-      fi
-      if [[ ${CLEANING} == yes ]]
-      then
-        inf "    removing log group: ${BROWN}${AWS_LOG_NAME}"
-        aws ${AWS_PROFILE_USE_CHECK[*]} logs delete-log-group --log-group-name ${AWS_LOG_NAME} > "${TMP}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_deletion.json" 2> "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_deletion.log"
-      fi
+        if [[ ${CLEANING} == yes ]]
+        then
+          inf "    removing log group: ${BROWN}${AWS_LOG_NAME}"
+          aws ${AWS_PROFILE_USE_CHECK[*]} logs delete-log-group --log-group-name ${AWS_LOG_NAME} > "${TMP}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_deletion.json" 2> "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_deletion.log"
+        fi
+      ) &
     #ToDo: logs from CloudWatch
     #aws ${AWS_PROFILE_USE_CHECK[*]} logs get-log-events --log-group-name /aws/lambda/${AWS_LAMBDA_NAME} --log-stream-name $(cat out) --limit 5
     done
   fi
 fi
+wait 
 #aws ${AWS_PROFILE_USE_CHECK[*]} logs describe-log-streams --log-group-name "/aws/lambda/${AWS_LAMBDA_FUNCTION_NAME}"
 #aws ${AWS_PROFILE_USE_CHECK[*]} logs delete-log-stream --log-group-name --log-stream-name
 #AWS logs

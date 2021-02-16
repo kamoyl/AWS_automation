@@ -1902,17 +1902,14 @@ lambda_add_permission_to_trust_principal()
     SID_FROM_EVENT=$(jq -r '.Statement[].Sid' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
     EVENT_BRIDGE_RULE_ARN=$(jq -r '.Statement[].Condition.ArnLike."AWS:SourceArn"' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
     PERMISSION_EVENTBRIDGE_LAMBDA=$(jq -r '.Statement[].Action' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
-    if [[ ${EVENT_BRIDGE_EVENT_NAME} == ${SID_FROM_EVENT} ]]
+    if [[ ${PERMISSIONS_ACTION} == ${PERMISSION_EVENTBRIDGE_LAMBDA} ]]
     then
-      if [[ ${PERMISSIONS_ACTION} == ${PERMISSION_EVENTBRIDGE_LAMBDA} ]]
-      then
-        inf "      ${WINE}Appropriate permissions and trust are set properly already"
-      else
-        warn "      ${RED}Trust has been set but with different permissions... it might not work finally"
-      fi
+      debug "        ${WINE}Appropriate permissions and trust are set properly already"
+    else
+      warn "        ${RED}Trust has been set but with different permissions... it might not work finally"
     fi
   else
-    inf "      Adding trust ${DARK_GREEN}${SERVICE_PRINCIPAL}${CYAN} and scope permissions to the rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+    inf "        Adding trust ${DARK_GREEN}${SERVICE_PRINCIPAL}${CYAN} and scope permissions to the rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
     if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json" ]
     then
       EVENT_BRIDGE_RULE_ARN=$(jq -r '.RuleArn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json")
@@ -1924,11 +1921,11 @@ lambda_add_permission_to_trust_principal()
     ERROR_CODE="$?"
     if [ ${ERROR_CODE} -eq 0 ]
     then
-      inf "        Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trusts ${DARK_GREEN}${SERVICE_PRINCIPAL}"
+      inf "          Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trusts ${DARK_GREEN}${SERVICE_PRINCIPAL}"
     else
-      error "        Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trust cannot be set"
-      debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
-      error "            $(cat ${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log)"
+      error "          Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trust cannot be set"
+      debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
+      error "              $(cat ${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log)"
       failed
     fi
   fi

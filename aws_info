@@ -589,6 +589,9 @@ then
             for EVENT_TARGET_ID in $(jq -r --arg event_target_arn ${EVENT_TARGET_ARN} '.Targets[] | select(.Arn == $event_target_arn) | .Id' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json")
             do
               inf "      to target Arn: ${GREEN}${EVENT_TARGET_ARN}"
+              EVENT_TARGET_NAME=$(echo ${EVENT_TARGET_ARN} | awk -F\: '{print $NF}')
+              EVENT_EVENT_NAME=$(echo ${EVENT_RULE} | sed 's/_rule/_event/g')
+              lambda_add_permission_to_trust_principal ${EVENT_TARGET_NAME} ${EVENT_EVENT_NAME} events.amazonaws.com ${EVENT_RULE}
               if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
               then
                 event_bridge_remove_target ${EVENT_TARGET_ID} ${EVENT_RULE_NAME}

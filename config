@@ -205,15 +205,15 @@ LOCAL_NETWORK="192.168.0.0/16"
 
 debug "Checking if needed tools exists: ip/ifconfig, grepcidr, jq, zip/7z, bc"
 
-if type ip > /dev/null 2>&1
+if type ifconfig > /dev/null 2>&1
+then
+  DEFAULT_INET_IP=$(ifconfig | grep -w inet | awk '{print $2}' | tail -n1)
+elif type ip > /dev/null 2>&1
 then
   DEFAULT_INET_IP=$(ip route get $(ip route show 0.0.0.0/0 | grep -oP 'via \K\S+') | grep -oP 'src \K\S+')
   #local_ip="$(ip route get 1 | awk -F'src' '{print $2; exit}')"
   #local_ip="${local_ip/uid*}"
   #[[ -z "$local_ip" ]] && local_ip="$(ifconfig -a | awk '/broadcast/ {print $2; exit}')"
-elif type ifconfig > /dev/null 2>&1
-then
-  DEFAULT_INET_IP=$(ifconfig | grep -w inet | awk '{print $2}' | tail -n1)
 else
   error "There is no \"ip\", nor \"ifconfig\" exiting"
   failed
@@ -366,7 +366,7 @@ FUNCTION_NAME=${FUNCNAME[0]}
   SLACK_NOTIFICATION_COLOR="${5}"
   FOOTER_URL="${6}"
   FOOTER_LINK="${7}"
-  RANDOM_ID=$(cat /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
+  RANDOM_ID=$(head -n10 /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
   SLACK_NOTIFICATION_MESSAGE="
     {\\\"channel\\\": \\\"${SLACK_CHANNEL}\\\"
       , \\\"username\\\": \\\"${USER}\\\"

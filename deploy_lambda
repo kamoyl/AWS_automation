@@ -103,7 +103,7 @@ do
   SHELL_SCRIPT=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $2}')
   SHELL_SCRIPT_NAME=$(echo ${SHELL_SCRIPT} | awk -F\. '{print $1}')
   SHELL_SCRIPT_CONTENT=$(cat "${SCRIPTS_HOME}/lambda_functions/${SHELL_SCRIPT}")
-  RANDOM_ID_GEN=$(cat /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
+  RANDOM_ID_GEN=$(head -n10 /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
   AWS_LAMBDA_NAME="${AWS_COMMON_NAME}_${SHELL_SCRIPT_NAME}_${LAMBDA_SCRIPT_NAME}"
   AWS_HANDLER_FUNCTION_NAME="${LAMBDA_SCRIPT_NAME}_handler"
   AWS_LAMBDA_HANDLER="${AWS_LAMBDA_NAME}.${AWS_HANDLER_FUNCTION_NAME}"
@@ -144,6 +144,7 @@ do
         for TARGET_IN_RULE in $(grep -l "${EC2_LAMBDA_SCRIPT_ARN}" "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json | awk -F\/ '{print $NF}' | sed "s/${AWS_EVENTS_RULES}_//g;s/_targets_full.json//g")
         do
           inf "      ${BLUE}${TARGET_IN_RULE}"
+          lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
         done
       else
         if [ -s "${TMP}/${AWS_EVENTS_RULES}_target_amount.csv" ]

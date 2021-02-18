@@ -103,10 +103,28 @@ then
   source "${SCRIPTS_HOME}/var_management"
 fi
 
+#AWS checking connection
+start_time_collecting
 aws_connectivity_check
+end_time_collecting
+CONNECTIVITY_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  connectivity check time: ${ORANGE}${CONNECTIVITY_CHECK_TIME}"
+fi
+#AWS checking connection
 
+#AWS collecting most of the data
+start_time_collecting
 source "${SCRIPTS_HOME}/aws_collecting"
 wait
+end_time_collecting
+AWS_COLLECTING_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  collecting data time: ${ORANGE}${AWS_COLLECTING_TIME}"
+fi
+#AWS collecting most of the data
 
 if [[ ${CURRENT_DAY} == 01 ]] && [[ ${CURRENT_MONTH} == 01 ]]
 then
@@ -125,6 +143,7 @@ else
 fi
 
 #AWS network
+start_time_collecting
 #VPCs
 if [ -s "${TMP}/${AWS_VPCS}_full.json" ]
 then
@@ -195,10 +214,17 @@ then
 else
   warn "  There is no subnets (really???)"
 fi
-#AWS network
 wait
-#AWS Instances
+end_time_collecting
+NETWORK_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  network check time: ${ORANGE}${CONNECTIVITY_CHECK_TIME}"
+fi
+#AWS network
 
+#AWS Instances
+start_time_collecting
 inf ""
 inf "${MAGENTA}EC2 Instances:"
 if [ -s "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Reservations[].Instances[].InstanceId' "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" | head -n1) ]
@@ -325,8 +351,16 @@ else
     warn "  There is no EC2 instance(s)"
   fi
 fi
+end_time_collecting
+EC2_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  EC2 check time: ${ORANGE}${CONNECTIVITY_CHECK_TIME}"
+fi
+#AWS Instances
 
 #AWS VOLUMEs
+start_time_collecting
 inf ""
 inf "${MAGENTA}EC2 volumes"
 if [ -s "${TMP}/${AWS_VOLS_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Volumes[].VolumeId' "${TMP}/${AWS_VOLS_DETAILS}_full.json" | head -n1) ]
@@ -420,9 +454,16 @@ else
     warn "  There is no EC2 volume(s)"
   fi
 fi
+end_time_collecting
+VOLUMES_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  volumes check time: ${ORANGE}${CONNECTIVITY_CHECK_TIME}"
+fi
 #AWS Volumes
 
 #AWS S3 snapshots
+start_time_collecting
 inf ""
 inf "${MAGENTA}S3 snapshot(s)"
 if [ -s "${TMP}/${AWS_SNAPS_DETAILS}_full.json" ]
@@ -476,9 +517,16 @@ then
 else
   warn "  There is no S3 snapshot(s)"
 fi
+end_time_collecting
+SNAPSHOT_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  snapshots check time: ${ORANGE}${CONNECTIVITY_CHECK_TIME}"
+fi
 #AWS S3 snapshots
 
 #AWS AMIs
+start_time_collecting
 inf ""
 inf "${MAGENTA}EC2 AMIs"
 if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | head -n1) ]
@@ -523,9 +571,16 @@ then
 else
   warn "  There is no EC2 AMIs"
 fi
-#AWS VOLUMEs
+end_time_collecting
+AMI_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  AMIs check time: ${ORANGE}${CONNECTIVITY_CHECK_TIME}"
+fi
+#AWS AMIs
 
 #AWS S3 buckets
+start_time_collecting
 if [ -s "${TMP}/${AWS_S3BUCKETS_DETAILS}_full.output" ]
 then
   inf ""
@@ -558,9 +613,16 @@ then
   done
 fi
 wait
+end_time_collecting
+BUCKET_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  buckets checking runtime: ${ORANGE}${BUCKET_CHECK_TIME}"
+fi
 #AWS S3 buckets
 
 #AWS EventBridge
+start_time_collecting
 inf ""
 inf "${MAGENTA}Event Buses"
 if [ -s "${TMP}/${AWS_EVENTS_BUSES}_full.json" ] 
@@ -591,7 +653,26 @@ then
               inf "      to target Arn: ${GREEN}${EVENT_TARGET_ARN}"
               EVENT_TARGET_NAME=$(echo ${EVENT_TARGET_ARN} | awk -F\: '{print $NF}')
               EVENT_EVENT_NAME=$(echo ${EVENT_RULE} | sed 's/_rule/_event/g')
-              lambda_add_permission_to_trust_principal ${EVENT_TARGET_NAME} ${EVENT_EVENT_NAME} events.amazonaws.com ${EVENT_RULE}
+              if [[ ${CLEANING} == no ]] && [[ ${XTRA_CLEANING} == no ]]
+              then
+                if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_EVENT_NAME}_trust_full.json" ]
+                then
+                  LAMBDA_FUNCTION_ARN_FROM_EVENT=$(jq -r '.Statement[].Resource' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_EVENT_NAME}_trust_full.json")
+                  SID_FROM_EVENT=$(jq -r '.Statement[].Sid' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_EVENT_NAME}_trust_full.json")
+                  EVENT_BRIDGE_RULE_ARN=$(jq -r '.Statement[].Condition.ArnLike."AWS:SourceArn"' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_EVENT_NAME}_trust_full.json")
+                  PERMISSION_EVENTBRIDGE_LAMBDA=$(jq -r '.Statement[].Action' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_EVENT_NAME}_trust_full.json")
+                  PERMISSIONS_ACTION="lambda:InvokeFunction"
+                  if [[ ${PERMISSIONS_ACTION} == ${PERMISSION_EVENTBRIDGE_LAMBDA} ]]
+                  then
+                    if [[ ${VERBOSE} == yes ]]
+                    then
+                      debug "        Appropriate permissions and trust to: ${DARK_GREEN}${SID_FROM_EVENT}${BLUE} are set properly already"
+                    fi
+                  else
+                    warn "        ${RED}Trust has been set but with different permissions... it might not work finally"
+                  fi
+                fi
+              fi
               if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
               then
                 event_bridge_remove_target ${EVENT_TARGET_ID} ${EVENT_RULE_NAME}
@@ -617,6 +698,12 @@ then
   done
 else
   warn "  There is no ${AWS_COMMON_NAME} Event Buses yet"  
+fi
+end_time_collecting
+EVENTBRIDGE_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  events collecting information runtime: ${ORANGE}${EVENTBRIDGE_CHECK_TIME}"
 fi
 #AWS events
 
@@ -659,6 +746,7 @@ fi
 #AWS SNS
 
 #AWS KeyPairs
+start_time_collecting
 if [ -s "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" ]
 then
   inf ""
@@ -683,8 +771,16 @@ then
   fi
 fi
 #AWS KeyPairs
+end_time_collecting
+KEYPAIRS_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  KEY PAIRs check time: ${ORANGE}${CONNECTIVITY_CHECK_TIME}"
+fi
+#AWS KeyPairs
 
 #AWS KMS
+start_time_collecting
 if [ -s "${TMP}/${AWS_KMS_ALIASES}_full.json" ]
 then
   inf ""
@@ -701,9 +797,16 @@ then
   done
 fi
 wait
+end_time_collecting
+KMS_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  KMS check time: ${ORANGE}${CONNECTIVITY_CHECK_TIME}"
+fi
 #AWS KMS
 
-#AWS Roles and policies and instance profiles
+#AWS Roles and policies
+start_time_collecting
 if [ -s "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json" ]
 then
   inf ""
@@ -753,16 +856,49 @@ then
   fi
 fi
 wait
-aws_list-roles
+end_time_collecting
+POLICIES_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  policies check time: ${ORANGE}${POLICIES_CHECK_TIME}"
+fi
+#AWS Roles and policies
 
+#AWS Roles
+start_time_collecting
+aws_list-roles
+end_time_collecting
+ROLES_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  roles check time: ${ORANGE}${ROLES_CHECK_TIME}"
+fi
+#AWS Roles
+
+#AWS instance profiles
+start_time_collecting
 aws_list-profiles
-#AWS Roles and policies and instance profiles
+end_time_collecting
+PROFILES_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  instance profiles check time: ${ORANGE}${PROFILES_CHECK_TIME}"
+fi
+#AWS instance profiles
 
 #AWS security groups
+start_time_collecting
 aws_list-securitygroups
+end_time_collecting
+SEC_GROUPS_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  security groups check time: ${ORANGE}${SEC_GROUPS_CHECK_TIME}"
+fi
 #AWS security groups
 
 #AWS Lambda functions
+start_time_collecting
 if [ -s "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json" ]
 then
   inf ""
@@ -783,9 +919,16 @@ then
     done
   fi
 fi
+end_time_collecting
+LAMBDA_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  Lambda functions check time: ${ORANGE}${LAMBDA_CHECK_TIME}"
+fi
 #AWS Lambda functions
 
 #AWS logs
+start_time_collecting
 if [ -s "${TMP}/${AWS_LOGS}_full.json" ]
 then
   inf ""
@@ -795,27 +938,28 @@ then
   then
     warn "  There is no log group(s) created yet"
   else
+    inf "  Log group:"
+    inf "    Rentention policy to log group:"
     for AWS_LOG_NAME in $(jq -r '.logGroups[].logGroupName' "${TMP}/${AWS_LOGS}_full.json")
     do
       (
         AWS_LOGS_NAME=$(echo ${AWS_LOG_NAME} | awk -F\/ '{print $NF}')
-        inf "  Log group: ${BROWN}${AWS_LOG_NAME}"
         RETENTION_LOGS_CHECKING=$(jq -r --arg aws_log_name ${AWS_LOG_NAME} '.logGroups[] | select(.logGroupName == $aws_log_name) | .retentionInDays' "${TMP}/${AWS_LOGS}_full.json")
         if [[ ${RETENTION_LOGS_CHECKING} == null ]] || [ -z ${RETENTION_LOGS_CHECKING} ] || [ ${RETENTION_LOGS_CHECKING} -ne ${AWS_LOGS_RETENTION_DAYS} ]
         then
-          inf "    Rentention policy to log group: ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days must be applied"
+          inf "      ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days ${WINE}must${CYAN} be applied"
           aws ${AWS_PROFILE_USE_CHECK[*]} logs put-retention-policy --log-group-name ${AWS_LOG_NAME} --retention-in-days ${AWS_LOGS_RETENTION_DAYS} > "${TMP}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.json" 2> "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"
           ERROR_CODE="$?"
           if [ ${ERROR_CODE} -eq 0 ]
           then
-            debug "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${BLUE} days applied properly (to log group: ${BROWN}${AWS_LOG_NAME}"
+            debug "        Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${BLUE} days applied properly (to log group: ${BROWN}${AWS_LOG_NAME}"
           else
-            error "      Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${RED} cannot be applied"
-            debug "        LOG_FILE=${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"
-            error "          $(cat "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log")"
+            error "        Rentention policy ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${RED} cannot be applied"
+            debug "          LOG_FILE=${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log"
+            error "            $(cat "${LOG}/${AWS_LOGS}_${AWS_LOGS_NAME}_group_retention.log")"
           fi
         else
-          inf "    Rentention policy to log group: ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days is already assigned"
+          inf "      ${BROWN}${AWS_LOG_NAME}${CYAN} for ${LIGHT_BLUE}${AWS_LOGS_RETENTION_DAYS}${CYAN} days is already ${GREEN}applied"
         fi
         if [[ ${CLEANING} == yes ]]
         then
@@ -831,6 +975,12 @@ fi
 wait 
 #aws ${AWS_PROFILE_USE_CHECK[*]} logs describe-log-streams --log-group-name "/aws/lambda/${AWS_LAMBDA_FUNCTION_NAME}"
 #aws ${AWS_PROFILE_USE_CHECK[*]} logs delete-log-stream --log-group-name --log-stream-name
+end_time_collecting
+LOGS_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  CloudWatch logs check time: ${ORANGE}${LOGS_CHECK_TIME}"
+fi
 #AWS logs
 
 #AWS CloudTrial
@@ -857,6 +1007,7 @@ fi
 #AWS compliance
 
 #AWS costs:
+start_time_collecting
 inf ""
 if grep -q "AccessDeniedException" "${TMP}/${AWS_COSTS_DETAILS}_full.json"
 then
@@ -878,22 +1029,25 @@ else
   fi
   inf "  current year (${BROWN}${CURRENT_YEAR}${CYAN}): ${LIGHT_YELLOW}${CURRENT_YEAR_COSTS} USD"
 fi
+end_time_collecting
+COSTS_CHECK_TIME=${RUNTIME}
+if [[ ${VERBOSE} == yes ]]
+then
+  debug "  costs check time: ${ORANGE}${COSTS_CHECK_TIME}"
+fi
 #AWS costs:
 
 #Slack notifications
 if [[ ${CLEANING} == no ]]
 then
-  if [[ ${VERBOSE} == yes ]]
+  if [[ ${VERBOSE} == no ]]
   then
     debug ""
     debug "  Slack notification...."
-  fi
-  export SLACK_INSTANCES=$(cat "${TMP}/${AWS_INSTANCES_DETAILS}_slack.out")
-  export SLACK_AMIS=$(cat "${TMP}/${AWS_AMIS_DETAILS}_slack.out")
-  export SLACK_VOLS=$(cat "${TMP}/${AWS_VOLS_DETAILS}_slack.out")
-  source "${SCRIPTS_HOME}/slack_notification_info"
-  if [[ ${VERBOSE} == yes ]]
-  then
+    export SLACK_INSTANCES=$(cat "${TMP}/${AWS_INSTANCES_DETAILS}_slack.out")
+    export SLACK_AMIS=$(cat "${TMP}/${AWS_AMIS_DETAILS}_slack.out")
+    export SLACK_VOLS=$(cat "${TMP}/${AWS_VOLS_DETAILS}_slack.out")
+    source "${SCRIPTS_HOME}/slack_notification_info"
     debug "    has just been sent"
   fi
 fi
@@ -906,6 +1060,5 @@ then
 fi
 
 AWS_TEST_RUNTIME=$(echo "scale=4; x=(${END_AWS_TIME} - ${START_AWS_TIME}); if(x<1) print 0; x" | bc)
-AWS_COLLECTING_TIME=$(echo "scale=4; x=(${END_AWS_COLLECTINGDATA_TIME} - ${START_AWS_COLLECTINGDATA_TIME}); if(x<1) print 0; x" | bc)
 inf "AWS test script has taken: ${WINE}${AWS_TEST_RUNTIME}${CYAN} [s]"
 inf "  collecting data time from AWS has taken: ${WINE}${AWS_COLLECTING_TIME}${CYAN} [s]"

@@ -78,6 +78,41 @@ then
   done
 fi
 
+if [ -s "${TMP}/${AWS_EVENTS_BUSES}_full.json" ]
+then
+  for EVENT_BUS in $(jq -r '.EventBuses[].Name' "${TMP}/${AWS_EVENTS_BUSES}_full.json")
+  do
+    EVENT_BUS_NAME=${EVENT_BUS}
+    EVENT_BUS_ARN="$(jq -r --arg event_bus_name ${EVENT_BUS_NAME} '.EventBuses[] | select(.Name == $event_bus_name) | .Arn' "${TMP}/${AWS_EVENTS_BUSES}_full.json")"
+    if [ -s "${TMP}/${AWS_EVENTS_RULES}_full.json" ] && [ ! -z $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | contains($aws_default_name) | not) | select(.EventBusName == $event_bus_name) | select(.ManagedBy == "schemas.amazonaws.com" | not) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json" | head -n1) ]
+    then
+      for EVENT_RULE in $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | contains($aws_default_name) | not) | select(.EventBusName == $event_bus_name) | select(.ManagedBy == "schemas.amazonaws.com" | not) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+      do
+        (
+        EVENT_RULE_NAME=${EVENT_RULE}
+        EVENT_RULE_BUS=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .EventBusName' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        EVENT_RULE_SCHEDULE=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .ScheduleExpression' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        EVENT_RULE_ARN=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        EVENT_RULE_STATE=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .State' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        EVENT_RULE_DESCRIPTION=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .Description' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" ] && [ ! -z $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" | head -n1) ]
+        then
+          for EVENT_TARGET_ARN in $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" | sort -u)
+          do
+            for EVENT_TARGET_ID in $(jq -r --arg event_target_arn ${EVENT_TARGET_ARN} '.Targets[] | select(.Arn == $event_target_arn) | .Id' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json")
+            do
+              EVENT_TARGET_NAME=$(echo ${EVENT_TARGET_ARN} | awk -F\: '{print $NF}')
+              EVENT_EVENT_NAME=$(echo ${EVENT_RULE} | sed 's/_rule/_event/g')
+              lambda_add_permission_to_trust_principal ${EVENT_TARGET_NAME} ${EVENT_EVENT_NAME} events.amazonaws.com ${EVENT_RULE} > "${LOG}/${AWS_EVENTS_RULES}_permissions_adding.log" 2>&1
+            done
+          done
+        fi
+        ) &
+      done
+    fi
+  done
+fi
+
 wait
 #end separating data
 

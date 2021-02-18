@@ -1904,7 +1904,10 @@ lambda_add_permission_to_trust_principal()
     PERMISSION_EVENTBRIDGE_LAMBDA=$(jq -r '.Statement[].Action' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
     if [[ ${PERMISSIONS_ACTION} == ${PERMISSION_EVENTBRIDGE_LAMBDA} ]]
     then
-      debug "        ${WINE}Appropriate permissions and trust are set properly already"
+      if [[ ${VERBOSE} == yes ]]
+      then
+        debug "        Appropriate permissions and trust to: ${DARK_GREEN}${SID_FROM_EVENT}${BLUE} are set properly already"
+      fi
     else
       warn "        ${RED}Trust has been set but with different permissions... it might not work finally"
     fi
@@ -1992,3 +1995,15 @@ aws_run_EC2_code()
 }
 
 debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}')${YELLOW} ]"
+
+start_time_collecting()
+{
+  START_TIME=$(date +%s.%4N)
+}
+
+end_time_collecting()
+{
+  END_TIME=$(date +%s.%4N)
+  RUNTIME=$(echo "scale=4; x=(${END_TIME} - ${START_TIME}); if(x<1) print 0; x" | bc)
+  RUNTIME=$(echo ${RUNTIME}[s])
+}

@@ -93,7 +93,7 @@ AWS_KMS_ALIASES="aws_kms_aliases_${CURRENT_TIMESTAMP}"
 SECURITY_GROUP_LAMBDA_NAME="${AWS_COMMON_NAME}_lambda_ec2-sec_group"
 if [ ! -z ${EXTERNAL_INET_IP} ]
 then
-  debug "  And your external IP is: ${LIME}${EXTERNAL_INET_IP}"
+  #debug "  And your external IP is: ${LIME}${EXTERNAL_INET_IP}"
   SECURITY_GROUP_EC2_NAME="${AWS_NAMES_PREFIX}_ec2-sec_group-for_${EXTERNAL_INET_IP}"
 else
   SECURITY_GROUP_EC2_NAME="${AWS_NAMES_PREFIX}_ec2-sec_group-for_${DEFAULT_INET_IP}"
@@ -1884,7 +1884,7 @@ lambda_add_permission_to_trust_principal()
 {
   if [ $# -ne 4 ]
   then
-    error "Function ${LIME}${FUNCNAME[0]}${RED} needs four parameter: ${YELLOW}(1)lambda_function_name, (2)event-name, (3)service-proncipal, (4)event_bridge-rule_name"
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs four parameters: ${YELLOW}(1)lambda_function_name, (2)event-name, (3)service-proncipal, (4)event_bridge-rule_name"
     ERROR_CODE="1"
     failed
   else
@@ -1895,7 +1895,6 @@ lambda_add_permission_to_trust_principal()
     PERMISSIONS_ACTION="lambda:InvokeFunction"
   fi
   aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-policy --function-name ${AWS_LAMBDA_FUNCTION_NAME} --output text 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust.log" | jq -r > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json" 2>>"${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
-
   if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json" ]
   then
     LAMBDA_FUNCTION_ARN_FROM_EVENT=$(jq -r '.Statement[].Resource' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")

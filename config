@@ -298,7 +298,7 @@ else
   SLACK_PROXY_CONTROL=(-x ${PROXYS})
 fi
 
-EXTERNAL_INET_IP=$(timeout --preserve-status -s 9 -k 3 2 curl ${SLACK_PROXY_CONTROL[*]} -s https://ipinfo.io/ip 2>/dev/null)
+export EXTERNAL_INET_IP=$(timeout --preserve-status -s 9 -k 3 2 curl ${SLACK_PROXY_CONTROL[*]} -s https://ipinfo.io/ip 2>/dev/null)
 
 if [ ! -z ${EXTERNAL_INET_IP} ]
 then

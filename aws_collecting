@@ -15,7 +15,6 @@ fi
 
 #start collecting all needed data
 
-START_AWS_COLLECTINGDATA_TIME=$(date +%s.%4N)
 aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-key-pairs                               > "${TMP}/${AWS_EC2_KEYPAIRS}_full.json"        2>"${LOG}/${AWS_EC2_KEYPAIRS}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} kms             list-aliases                                     > "${TMP}/${AWS_KMS_ALIASES}_full.json"         2>"${LOG}/${AWS_KMS_ALIASES}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-instances                               > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json"   2>"${LOG}/${AWS_INSTANCES_DETAILS}.log" &
@@ -45,7 +44,6 @@ wait
 events_list_of_rules
 events_list_of_all_targets
 wait
-END_AWS_COLLECTINGDATA_TIME=$(date +%s.%4N)
 DEFAULT_VPC=$(jq -r '.Vpcs[].VpcId' "${TMP}/${AWS_VPCS}_full.json")
 
 #start separating data
@@ -61,7 +59,7 @@ jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Roles[] | select(.Arn | conta
 for AWS_IAM_ROLE in $(jq -r '.Roles[].RoleName' "${TMP}/${AWS_ROLES}_full.json" | grep "${AWS_NAMES_PREFIX}")
 do
   (
-  jq -r --arg aws_iam_role "${AWS_IAM_ROLE}" '.Roles[] | select(.RoleName == $aws_iam_role)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE}_full.json" 2>"${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE}.log"
+    jq -r --arg aws_iam_role "${AWS_IAM_ROLE}" '.Roles[] | select(.RoleName == $aws_iam_role)' "${TMP}/${AWS_ROLES}_full.json" > "${TMP}/${AWS_ROLES}_${AWS_IAM_ROLE}_full.json" 2>"${LOG}/${AWS_ROLES}_${AWS_IAM_ROLE}.log"
   ) &
 done
 
@@ -70,10 +68,10 @@ then
   for AWS_DEFAULT_POLICY in $(jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name)) | .PolicyName' "${TMP}/${AWS_POLICIES}_full.json")
   do
     (
-    jq -r --arg default_policy ${AWS_DEFAULT_POLICY} '.Policies[] | select(.PolicyName == $default_policy)' "${TMP}/${AWS_POLICIES}_full.json" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}.log"
-    AWS_DEFAULT_POLICY_VERSION=$(jq -r '.DefaultVersionId' "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json")
-    AWS_DEFAULT_POLICY_ARN=$(jq -r '.Arn' "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json")
-    aws ${AWS_PROFILE_USE_CHECK[*]} iam get-policy-version  ${AWS_PROFILE_USE_CHECK[*]} --policy-arn "${AWS_DEFAULT_POLICY_ARN}" --version-id "${AWS_DEFAULT_POLICY_VERSION}" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_def_full.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_def.log"
+      jq -r --arg default_policy ${AWS_DEFAULT_POLICY} '.Policies[] | select(.PolicyName == $default_policy)' "${TMP}/${AWS_POLICIES}_full.json" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}.log"
+      AWS_DEFAULT_POLICY_VERSION=$(jq -r '.DefaultVersionId' "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json")
+      AWS_DEFAULT_POLICY_ARN=$(jq -r '.Arn' "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_full.json")
+      aws ${AWS_PROFILE_USE_CHECK[*]} iam get-policy-version  ${AWS_PROFILE_USE_CHECK[*]} --policy-arn "${AWS_DEFAULT_POLICY_ARN}" --version-id "${AWS_DEFAULT_POLICY_VERSION}" > "${TMP}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_def_full.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_DEFAULT_POLICY}_def.log"
     ) &
   done
 fi
@@ -103,7 +101,14 @@ then
             do
               EVENT_TARGET_NAME=$(echo ${EVENT_TARGET_ARN} | awk -F\: '{print $NF}')
               EVENT_EVENT_NAME=$(echo ${EVENT_RULE} | sed 's/_rule/_event/g')
-              lambda_add_permission_to_trust_principal ${EVENT_TARGET_NAME} ${EVENT_EVENT_NAME} events.amazonaws.com ${EVENT_RULE} > "${LOG}/${AWS_EVENTS_RULES}_permissions_adding.log" 2>&1
+              aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-function --function-name ${EVENT_TARGET_NAME} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_TARGET_NAME}_definition_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_TARGET_NAME}_definition.log"
+              if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_TARGET_NAME}_definition_full.json" ]
+              then
+                lambda_add_permission_to_trust_principal ${EVENT_TARGET_NAME} ${EVENT_EVENT_NAME} events.amazonaws.com ${EVENT_RULE} > "${LOG}/${AWS_EVENTS_RULES}_permissions_adding.log" 2>&1
+              else
+                echo "removing target: ID: ${EVENT_TARGET_ID}, ${EVENT_TARGET_NAME}, from a event rule: ${EVENT_TARGET_NAME}"
+                aws ${AWS_PROFILE_USE_CHECK[*]} events remove-targets --rule ${EVENT_RULE_NAME} --ids ${EVENT_TARGET_ID}
+              fi
             done
           done
         fi
@@ -114,6 +119,9 @@ then
 fi
 
 wait
+events_list_of_all_targets
+wait
+
 #end separating data
 
 echo "

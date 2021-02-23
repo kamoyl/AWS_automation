@@ -205,19 +205,25 @@ LOCAL_NETWORK="192.168.0.0/16"
 
 debug "Checking if needed tools exists: ip/ifconfig, grepcidr, jq, zip/7z, bc"
 
-if type ifconfig > /dev/null 2>&1
+if type ip > /dev/null 2>&1
+then
+  if [[ ! ${OSTYPE} =~ ^darwin.* ]]
+  then
+    DEFAULT_INET_IP=$(ip route get $(ip route show 0.0.0.0/0 | grep -oP 'via \K\S+') | grep -oP 'src \K\S+')
+    #local_ip="$(ip route get 1 | awk -F'src' '{print $2; exit}')"
+    #local_ip="${local_ip/uid*}"
+    #[[ -z "$local_ip" ]] && local_ip="$(ifconfig -a | awk '/broadcast/ {print $2; exit}')"
+  else
+    DEFAULT_INET_IP=$(ifconfig | grep -w inet | awk '{print $2}' | tail -n1)
+  fi
+elif type ifconfig > /dev/null 2>&1
 then
   DEFAULT_INET_IP=$(ifconfig | grep -w inet | awk '{print $2}' | tail -n1)
-elif type ip > /dev/null 2>&1
-then
-  DEFAULT_INET_IP=$(ip route get $(ip route show 0.0.0.0/0 | grep -oP 'via \K\S+') | grep -oP 'src \K\S+')
-  #local_ip="$(ip route get 1 | awk -F'src' '{print $2; exit}')"
-  #local_ip="${local_ip/uid*}"
-  #[[ -z "$local_ip" ]] && local_ip="$(ifconfig -a | awk '/broadcast/ {print $2; exit}')"
 else
   error "There is no \"ip\", nor \"ifconfig\" exiting"
   failed
 fi
+
 if ! type grepcidr > /dev/null 2>&1
 then
   error "There is no \"grepcidr\" command, exiting"

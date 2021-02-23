@@ -127,8 +127,28 @@ do
   else
     if [[ ${EVENT_SCHEDULE} =~ ^cron.* ]]
     then
-      EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_rule"
-      EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_event"
+      SCHEDULE_DAY_OF_WEEK=$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print $5}')
+      SCHEDULE_DAY_OF_MONTH=$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print $3}')
+      if [[ ${SCHEDULE_DAY_OF_WEEK} == "?" ]] || [[ ${SCHEDULE_DAY_OF_WEEK} == "*" ]]
+      then
+        if [[ ${SCHEDULE_DAY_OF_MONTH} == "?" ]] || [[ ${SCHEDULE_DAY_OF_MONTH} == "*" ]]
+        then
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1}')_lambda_rule"
+          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1}')_lambda_event"
+        else
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_MONTH_"$3}')_lambda_rule"
+          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_MONTH_"$3}')_lambda_event"
+        fi
+      else
+        if [[ ${SCHEDULE_DAY_OF_MONTH} == "?" ]] || [[ ${SCHEDULE_DAY_OF_MONTH} == "*" ]]
+        then
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_rule"
+          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_event"
+        else
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5"_MONTH_"$3}')_lambda_rule"
+          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5"_MONTH_"$3}')_lambda_event"
+        fi
+      fi
     elif [[ ${EVENT_SCHEDULE} =~ ^rate.* ]]
     then
       EVENT_SCHEDULE_RATE="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print $1}')"

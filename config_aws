@@ -1994,15 +1994,3 @@ aws_run_EC2_code()
 }
 
 debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}')${YELLOW} ]"
-
-start_time_collecting()
-{
-  START_TIME=$(date +%s.%4N)
-}
-
-end_time_collecting()
-{
-  END_TIME=$(date +%s.%4N)
-  RUNTIME=$(echo "scale=4; x=(${END_TIME} - ${START_TIME}); if(x<1) print 0; x" | bc)
-  RUNTIME=$(echo ${RUNTIME}[s])
-}

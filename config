@@ -31,6 +31,14 @@ ORANGE=$(echo -e "\x1b[38;2;255;127;000m")
 ORIGIFS=${IFS}
 NEWIFS=$'\n'
 
+if type nproc > /dev/null 2>&1
+then
+  CPU_COUNT=$(nproc)
+elif [[ "${OSTYPE}" =~ ^darwin.* ]]
+then
+  CPU_COUNT=$(system_profiler SPHardwareDataType | grep "Total Number of Cores:" | awk -F\: '{print $2}' | sed 's/^ *//g;s/* $//g')
+fi
+
 PATH_PARENT_SCRIPTS=$(dirname ${SCRIPTS_HOME})
 PATH_GRANDPARENT_SCRIPTS=$(dirname ${PATH_PARENT_SCRIPTS})
 SCRIPT_NAME=$(echo ${SCRIPT} | awk -F\/ '{print $NF}')
@@ -401,6 +409,18 @@ FUNCTION_NAME=${FUNCNAME[0]}
   fi
 IFS=${COLLECTEDIFS}
 sleep 3
+}
+
+start_time_collecting()
+{
+  START_TIME=$(date +%s.%4N)
+}
+
+end_time_collecting()
+{
+  END_TIME=$(date +%s.%4N)
+  RUNTIME=$(echo "scale=4; x=(${END_TIME} - ${START_TIME}); if(x<1) print 0; x" | bc)
+  RUNTIME=$(echo ${RUNTIME}[s])
 }
 
 debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}')${YELLOW} ]"

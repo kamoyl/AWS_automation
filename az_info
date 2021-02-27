@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+
+START_AZURE_TIME=$(date +%s.%4N)
+
+if [[ "${OSTYPE}" =~ "linux" ]]
+then
+  SCRIPT=$(readlink -f "$0")
+elif [[ "${OSTYPE}" =~ "darwin" ]]
+then
+  SCRIPT=$(greadlink -f "$0")
+else
+  SCRIPT=$(readlink -f "$0")
+fi
+
+SCRIPTS_HOME=$(dirname "${SCRIPT}")
+
+PARAMETERS=$(echo "$@" | sed 's/\-l .//g')
+
+if [ $(caller | awk '{print $1}') -eq 0 ]
+then
+  CALLING=0
+  source "${SCRIPTS_HOME}/config"
+  echo -e "${BLUE}${datestring} EXECUTE: ${YELLOW}[ ${LIME}$0 ${PARAMETERS} ${YELLOW} ]${RESET}"
+else
+  CALLING=1
+  if [[ ${VERBOSE} == yes ]]
+  then
+    debug "${YELLOW}[ ${LIME}$(echo $(caller | awk '{print $2}') | awk -F\/ '{print $NF}') ${YELLOW}calls (in line: ${LIME}$(caller | awk '{print $1}')${YELLOW}) ${LIME}$(echo ${BASH_SOURCE} | awk -F\/ '{print $NF}') ${PARAMETERS} ${YELLOW} ]"
+  fi
+fi
+
+usage()
+{
+echo "
+${CYAN}Usage:${BRIGHT}${WHITE}
+$0 [-o DIRECTORY] -v [-O OWNER_ID] [-C]
+
+    ${NORMAL}${CYAN}This script checks and looks for difference between repositories and
+        ENV - and take some actions later on, producting report of what has been done${BLUE}
+    ${LIME}-o${BLUE}  OUTPUT directory - where to store ALL LOGs and TEMP files
+        (default directory is: ${CYAN}${HOME}/var${BLUE} and TMP and LOG are subdirectories to var)
+    ${LIME}-C${BLUE}  CLEANING (${WINE}WARNING${BLUE}) - removing all running/stopped instance(s) (terminates them) and all volumes
+    ${LIME}-x${BLUE}  only works with [-C] - CLEANING (${RED}WARNING${BLUE}) - removes: S3 buckets (only empty), Lambda functions, events-busses etc.
+    ${LIME}-v${BLUE}  verbose${RESET}"
+    1>&2;
+    exit 1
+}
+
+VERBOSE=no
+REDEPLOYMENT=no
+CLEANING=no
+XTRA_CLEANING=no
+while getopts ":o:vCx" ARG
+do
+  case "${ARG}" in
+        v)
+            VERBOSE=yes
+            ;;
+        C)
+            CLEANING=yes
+            ;;
+        x)  XTRA_CLEANING=yes
+            ;;
+        o)
+            o=${OPTARG}
+            ;;
+        *)
+            usage
+            ;;
+    esac
+done
+shift $((OPTIND-1))
+
+if [ ${CALLING} -eq 0 ]
+then
+  source "${SCRIPTS_HOME}/var_management"
+fi
+
+if [[ ${CURRENT_DAY} == 01 ]] && [[ ${CURRENT_MONTH} == 01 ]]
+then
+  CURRENT_MONTH_COSTS="0"
+  CURRENT_YEAR_COSTS="0"
+elif [[ ${CURRENT_DAY} == 01 ]]
+then
+  CURRENT_MONTH_COSTS="0"
+  CURRENT_YEAR_COSTS=${CURRENT_YEAR_COSTS%.*}
+else
+  CURRENT_MONTH_COSTS=${CURRENT_MONTH_COSTS%.*}
+  CURRENT_YEAR_COSTS=${CURRENT_YEAR_COSTS%.*}
+fi
+
+AZ_SUBNETS_DETAILS="az_subnets_${CURRENT_TIMESTAMP}"
+AZ_ACCOUNT="${AWS_NAMES_PREFIX}_account_${CURRENT_TIMESTAMP}"
+AZ_RGROUP_DETAILS="az_resource_group_${CURRENT_TIMESTAMP}"
+az network vnet list > "${TMP}/${AZ_SUBNETS_DETAILS}_full.json" 2>"${LOG}/${AZ_SUBNETS_DETAILS}.log" &
+az group list > "${TMP}/${AZ_RGROUP_DETAILS}_full.json" 2>"${LOG}/${AZ_RGROUP_DETAILS}.log" &
+wait
+if [ ! -z $(jq -r '.[]' "${TMP}/${AZ_SUBNETS_DETAILS}_full.json" | head -n1) ]
+then
+  jq -r '.[].name' "${TMP}/${AZ_SUBNETS_DETAILS}_full.json"
+  jq -r '.[].id' "${TMP}/${AZ_SUBNETS_DETAILS}_full.json"
+  az network application-gateway list > 
+fi
+az account list > "${TMP}/${AZ_ACCOUNT}_full.json"  2>"${LOG}/${AZ_ACCOUNT}.log"
+if [ ! -z $(jq -r '.[]' "${TMP}/${AZ_ACCOUNT}_full.json" | head -n1) ]
+then
+  ACCOUNT_ID="$(jq -r '.[].id' "${TMP}/${AZ_ACCOUNT}_full.json")"
+  ACCOUNT_NAME="$(jq -r '.[].name' "${TMP}/${AZ_ACCOUNT}_full.json")" 
+  ACCOUNT_USER_NAME="$(jq -r '.[].user.name' "${TMP}/${AZ_ACCOUNT}_full.json")"
+fi
+#deployment of vm:
+#az upgrade --all -y
+
+for RESOURCE_GROUP in $(az group list | jq -r '.[].id' | awk -F\/ '{print $NF}') #resourcegroup
+do
+  #listing
+  if [ ! -z $(jq -r '.[]' "${TMP}/${AZ_SUBNETS_DETAILS}_full.json" | head -n1) ]
+  then
+    az network vnet list-available-ips --resource-group ${RESOURCE_GROUP} --name
+    az network vnet list-endpoint-services
+    az network vnet subnet list --resource-group ${RESOURCE_GROUP} --vnet-name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet
+    az network application-gateway address-pool list --resource-group ${RESOURCE_GROUP} --gateway-name ${AWS_COMMON_NAME}_${RANDOM_ID}_app_gw
+  fi
+
+  RANDOM_ID=$(head -n10 /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
+  #creating:
+  #create vnet for resource group
+  az network vnet create --resource-group ${RESOURCE_GROUP} --name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet
+  ERROR_CODE="$?"
+  echo "ERROR_CODE=${ERROR_CODE}"
+  #DNS - check
+  #create gateway
+  az network application-gateway create --resource-group ${RESOURCE_GROUP} --name ${AWS_COMMON_NAME}_${RANDOM_ID}_app_gw --capacity 2 --sku Standard_Medium --vnet-name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet --subnet ${AWS_COMMON_NAME}_${RANDOM_ID}_subnet --http-settings-cookie-based-affinity Enabled --servers 10.0.0.4 10.0.0.5
+  ERROR_CODE="$?"
+  echo "ERROR_CODE=${ERROR_CODE}"
+  
+  #deleting 
+  #az network application-gateway delete --resource-group ${RESOURCE_GROUP} --name ${AWS_COMMON_NAME}_${RANDOM_ID}_app_gw
+  #az network vnet subnet delete --name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet --resource-group ${RESOURCE_GROUP} --vnet-name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet
+  #az network vnet delete --resource-group ${RESOURCE_GROUP} --name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet
+done

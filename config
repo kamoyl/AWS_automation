@@ -37,6 +37,8 @@ then
 elif [[ "${OSTYPE}" =~ ^darwin.* ]]
 then
   CPU_COUNT=$(system_profiler SPHardwareDataType | grep "Total Number of Cores:" | awk -F\: '{print $2}' | sed 's/^ *//g;s/* $//g')
+else
+  CPU_COUNT="4"
 fi
 
 PATH_PARENT_SCRIPTS=$(dirname ${SCRIPTS_HOME})
@@ -236,7 +238,7 @@ if ! type grepcidr > /dev/null 2>&1
 then
   error "There is no \"grepcidr\" command, exiting"
 fi
-if ! type jq > /dev/null 2>&1 && [[ $0 =~ aws ]]
+if ! type jq > /dev/null 2>&1 && ([[ $0 =~ ^aws_.* ]] || [[ $0 =~ ^az_.* ]])
 then
   error "There is no \"jq\" command, exiting"
   failed
@@ -257,27 +259,29 @@ then
   error "There is no \"bc\" command, exiting"
   failed
 fi
-
-debug "Checking if aws cli exists, and if version is appropriate"
-if ! type aws > /dev/null 2>&1
+if [[ $0 =~ ^aws_.* ]]
 then
-  if [[ $0 == "aws_deploy" ]] || [[ $0 == "aws_info" ]]
+  debug "Checking if aws cli exists, and if version is appropriate"
+  if ! type aws > /dev/null 2>&1
   then
-    error "There is no \"aws\" command, exiting"
-    failed
-  fi
-else
-  AWS_CLI_VERSION=$(aws --version | awk '{print $1}' | awk -F\/ '{print $2}' | awk -F\. '{print $1}')
-  if [ ${AWS_CLI_VERSION} -eq 1 ]
-  then
-    debug "aws cli is in version ${YELLOW}1${CYAN}, which WILL cause some issues... please update"
-    debug "  https://docs.aws.amazon.com/cli/latest/userguide/welcome-versions.html"
-  elif [ ${AWS_CLI_VERSION} -eq 2 ]
-  then
-    debug "aws cli is in a ${GREEN}proper${BLUE} version, continue"
+    if [[ $0 == "aws_deploy" ]] || [[ $0 == "aws_info" ]]
+    then
+      error "There is no \"aws\" command, exiting"
+      failed
+    fi
   else
-    error "I cannot recognize aws cli version, existing"
-    failed
+    AWS_CLI_VERSION=$(aws --version | awk '{print $1}' | awk -F\/ '{print $2}' | awk -F\. '{print $1}')
+    if [ ${AWS_CLI_VERSION} -eq 1 ]
+    then
+      debug "aws cli is in version ${YELLOW}1${CYAN}, which WILL cause some issues... please update"
+      debug "  https://docs.aws.amazon.com/cli/latest/userguide/welcome-versions.html"
+    elif [ ${AWS_CLI_VERSION} -eq 2 ]
+    then
+      debug "aws cli is in a ${GREEN}proper${BLUE} version, continue"
+    else
+      error "I cannot recognize aws cli version, existing"
+      failed
+    fi
   fi
 fi
 
@@ -332,7 +336,40 @@ then
   source "${SCRIPTS_HOME}/config_aws"
 fi
 
-function SHOW_TIME ()
+splitting_file_for_parallel()
+{
+  if [ $# -ne 2 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs two parameters: ${YELLOW}(1)source filename, (2)extension"
+    ERROR_CODE="1"
+    failed
+  else
+    SOURCE_FILE="${1}"
+    EXTENSION="${2}"
+  fi
+  SOURCE_FILE_LINES=$(wc -l "${TMP}/${SOURCE_FILE}" | awk '{print $1}')
+  SPLIT_FILES=$((${CPU_COUNT} * 2))
+  PACKAGE_COUNT="100"
+
+  if [ ${SOURCE_FILE_LINES} -le $((${SPLIT_FILES} + 1)) ]
+  then
+    SPLIT_LINES=1
+    SPLIT_FILES=${SOURCE_FILE_LINES}
+    inf "Splitting input file into ${YELLOW}${SPLIT_FILES}${CYAN} chunks, for parallel running"
+  else
+    SPLIT_LINES=$((SOURCE_FILE_LINES/(SPLIT_FILES + 1) + 1))
+    inf "Splitting input file into ${YELLOW}$((SPLIT_FILES + 1))${CYAN} chunks, for parallel running"
+  fi
+  if [[ ${VERBOSE} == yes ]]
+  then
+    debug "  There are ${YELLOW}${SOURCE_FILE_LINES}${BLUE} tables in input file"
+    debug "    There will be ${YELLOW}${SPLIT_FILES}${BLUE} files run in parallel"
+    debug "      Each with ${YELLOW}${SPLIT_LINES}${BLUE} lines"
+  fi
+  split -l ${SPLIT_LINES} -d "${TMP}/${SOURCE_FILE}" --verbose "${TMP}/${SOURCE_FILE}_${EXTENSION}_" > "${TMP}/${SOURCE_FILE}_${EXTENSION}_split.out" 2>"${LOG}/${SOURCE_FILE}_${EXTENSION}_split.log"
+}
+
+show_time()
 {
   NUM=${1}
   MIN=0

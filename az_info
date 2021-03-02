@@ -92,50 +92,110 @@ fi
 AZ_SUBNETS_DETAILS="az_subnets_${CURRENT_TIMESTAMP}"
 AZ_ACCOUNT="${AWS_NAMES_PREFIX}_account_${CURRENT_TIMESTAMP}"
 AZ_RGROUP_DETAILS="az_resource_group_${CURRENT_TIMESTAMP}"
+AZ_NAT_GWS="az_nat_gws_${CURRENT_TIMESTAMP}"
+AZ_SECURITY_GROUPS="az_security-groups_${CURRENT_TIMESTAMP}"
 az network vnet list > "${TMP}/${AZ_SUBNETS_DETAILS}_full.json" 2>"${LOG}/${AZ_SUBNETS_DETAILS}.log" &
 az group list > "${TMP}/${AZ_RGROUP_DETAILS}_full.json" 2>"${LOG}/${AZ_RGROUP_DETAILS}.log" &
+az network nsg list > "${TMP}/${AZ_SECURITY_GROUPS}_full.json" 2>"${LOG}/${AZ_SECURITY_GROUPS}.log" &
+#az network application-gateway list > "${TMP}/${AZ_AGWS}_full.json" 2>"${LOG}/${AZ_AGWS}.log" &
+az network nat gateway list > "${TMP}/${AZ_NAT_GWS}_full.json" 2>"${LOG}/${AZ_NAT_GWS}.log" & 
+az account list > "${TMP}/${AZ_ACCOUNT}_full.json"  2>"${LOG}/${AZ_ACCOUNT}.log" &
 wait
+if [ ! -z $(jq -r '.[]' "${TMP}/${AZ_ACCOUNT}_full.json" | head -n1) ]
+then
+  ACCOUNT_ID="$(jq -r '.[].id' "${TMP}/${AZ_ACCOUNT}_full.json")"
+  ACCOUNT_NAME="$(jq -r '.[].name' "${TMP}/${AZ_ACCOUNT}_full.json")"
+  ACCOUNT_USER_NAME="$(jq -r '.[].user.name' "${TMP}/${AZ_ACCOUNT}_full.json")"
+fi
+
 if [ ! -z $(jq -r '.[]' "${TMP}/${AZ_SUBNETS_DETAILS}_full.json" | head -n1) ]
 then
   jq -r '.[].name' "${TMP}/${AZ_SUBNETS_DETAILS}_full.json"
   jq -r '.[].id' "${TMP}/${AZ_SUBNETS_DETAILS}_full.json"
-  az network application-gateway list > 
-fi
-az account list > "${TMP}/${AZ_ACCOUNT}_full.json"  2>"${LOG}/${AZ_ACCOUNT}.log"
-if [ ! -z $(jq -r '.[]' "${TMP}/${AZ_ACCOUNT}_full.json" | head -n1) ]
-then
-  ACCOUNT_ID="$(jq -r '.[].id' "${TMP}/${AZ_ACCOUNT}_full.json")"
-  ACCOUNT_NAME="$(jq -r '.[].name' "${TMP}/${AZ_ACCOUNT}_full.json")" 
-  ACCOUNT_USER_NAME="$(jq -r '.[].user.name' "${TMP}/${AZ_ACCOUNT}_full.json")"
 fi
 #deployment of vm:
 #az upgrade --all -y
 
-for RESOURCE_GROUP in $(az group list | jq -r '.[].id' | awk -F\/ '{print $NF}') #resourcegroup
+RANDOM_ID=$(head -n10 /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
+
+for RESOURCE_GROUP in $(az group list | jq -r '.[].id' | awk -F\/ '{print $NF}')
 do
-  #listing
+  inf "resource group: ${ORANGE}${RESOURCE_GROUP}:"
+  COMMON_PREFIX="${AWS_COMMON_NAME}_${RANDOM_ID}_${RESOURCE_GROUP}"
+  AZ_RG_VNET="${COMMON_PREFIX}_vnet"
+  AZ_RG_SUBNET="${COMMON_PREFIX}_subnet"
+  AZ_RG_NAT_GW="${COMMON_PREFIX}_nat_gw"
+  AZ_RG_NSG="${COMMON_PREFIX}_nsg"
   if [ ! -z $(jq -r '.[]' "${TMP}/${AZ_SUBNETS_DETAILS}_full.json" | head -n1) ]
   then
-    az network vnet list-available-ips --resource-group ${RESOURCE_GROUP} --name
-    az network vnet list-endpoint-services
-    az network vnet subnet list --resource-group ${RESOURCE_GROUP} --vnet-name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet
-    az network application-gateway address-pool list --resource-group ${RESOURCE_GROUP} --gateway-name ${AWS_COMMON_NAME}_${RANDOM_ID}_app_gw
+    az network vnet subnet list --resource-group ${RESOURCE_GROUP} --vnet-name ${AZ_RG_VNET}
+    az network vnet list-available-ips --resource-group ${RESOURCE_GROUP} --name ${AZ_RG_VNET}
+    #az network vnet list-endpoint-services
+  else
+
+    debug "  creating vnet: ${YELLOW}${AZ_RG_VNET}${BLUE} in RG: ${BROWN}${RESOURCE_GROUP}"
+    az network vnet create --resource-group ${RESOURCE_GROUP} --name ${AZ_RG_VNET} > "${TMP}/${AZ_RG_VNET}_create.json" 2>"${LOG}/${AZ_RG_VNET}_create.log"
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      debug "    creating vnet: ${YELLOW}${AZ_RG_VNET}${BLUE} in RG: ${BROWN}${RESOURCE_GROUP}${BLUE} properly done"
+    else
+      error "    creating vnet: ${YELLOW}${AZ_RG_VNET}${RED} in RG: ${BROWN}${RESOURCE_GROUP}${RED} failed, exiting"
+      failed
+    fi
+    
+    debug "  creating nat gateway: ${DARK_GREEN}${AZ_RG_NAT_GW}${BLUE} in RG: ${BROWN}${RESOURCE_GROUP}"
+    az network nat gateway create --resource-group ${RESOURCE_GROUP} --name ${AZ_RG_NAT_GW} --idle-timeout 4 > "${TMP}/${AZ_RG_NAT_GW}_create.json" 2>"${LOG}/${AZ_RG_NAT_GW}_create.log"
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      debug "    creating nat gateway: ${DARK_GREEN}${AZ_RG_NAT_GW}${BLUE} in RG: ${BROWN}${RESOURCE_GROUP}${BLUE} properly done"
+    else
+      error "    creating nat gateway: ${DARK_GREEN}${AZ_RG_NAT_GW}${RED} in RG: ${BROWN}${RESOURCE_GROUP}${RED} failed, exiting"
+      failed
+    fi
+
+    debug "      creating subnet: ${LIME}${AZ_RG_SUBNET}${BLUE} in vnet: ${YELLOW}${AZ_RG_VNET}${BLUE}, with nat gateway: ${DARK_GREEN}${AZ_RG_NAT_GW}"
+    az network vnet subnet create --resource-group ${RESOURCE_GROUP} --vnet-name ${AZ_RG_VNET} --nat-gateway ${AZ_RG_NAT_GW} --name ${AZ_RG_SUBNET}  --address-prefixes "10.0.1.0/24" > "${TMP}/${AZ_RG_SUBNET}_create.json" 2>"${LOG}/${AZ_RG_SUBNET}_create.log"
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      debug "        creating subnet: ${LIME}${AZ_RG_SUBNET}${BLUE} properly done"
+    else
+      error "        creating subnet: ${LIME}${AZ_RG_SUBNET}${BLUE} failed, exiting"
+      failed
+    fi
+
+    debug "  creating security group: ${LIGHT_YELLOW}${AZ_RG_NSG}"
+    az network nsg create --resource-group ${RESOURCE_GROUP} --name ${AZ_RG_NSG} > "${TMP}/${AZ_RG_NSG}_create.json" 2>"${LOG}/${AZ_RG_NSG}_create.log"
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      debug "    creating security group: ${LIGHT_YELLOW}${AZ_RG_NSG}${BLUE} in RG: ${BROWN}${RESOURCE_GROUP}${BLUE} properly done"
+    else
+      error "    creating security group: ${LIGHT_YELLOW}${AZ_RG_NSG}${RED} in RG: ${BROWN}${RESOURCE_GROUP}${RED} failed, exiting"
+      failed
+    fi
+
+    debug "      Adding an SSH rule, from ${GREEN}${DEFAULT_INET_IP}/32${BLUE} to security group: ${LIGHT_YELLOW}${AZ_RG_NSG}"
+    az network nsg rule create --resource-group ${RESOURCE_GROUP} --nsg-name ${AZ_RG_NSG} --name default_ssh --priority 100 --source-address-prefixes ${DEFAULT_INET_IP}/32 --source-port-ranges 22 --destination-address-prefixes '*' --destination-port-ranges 22 --access Allow --protocol Tcp --description "Default access by ssh" > "${TMP}/${AZ_RG_NSG}_ssh_rule.json" 2>"${LOG}/${AZ_RG_NSG}_ssh_rule.log"
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      debug "        Adding an SSH rule, from ${GREEN}${DEFAULT_INET_IP}/32${BLUE} to security group: ${LIGHT_YELLOW}${AZ_RG_NSG}${BLUE} properly done"
+    else
+      error "        Adding an SSH rule, from ${GREEN}${DEFAULT_INET_IP}/32${BLUE} to security group: ${LIGHT_YELLOW}${AZ_RG_NSG}${RED} failed, exiting"
+      failed
+    fi
   fi
 
-  RANDOM_ID=$(head -n10 /dev/urandom | tr -dc '0-9a-zA-Z' | fold -w 4 | head -n1)
-  #creating:
-  #create vnet for resource group
-  az network vnet create --resource-group ${RESOURCE_GROUP} --name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet
-  ERROR_CODE="$?"
-  echo "ERROR_CODE=${ERROR_CODE}"
-  #DNS - check
-  #create gateway
-  az network application-gateway create --resource-group ${RESOURCE_GROUP} --name ${AWS_COMMON_NAME}_${RANDOM_ID}_app_gw --capacity 2 --sku Standard_Medium --vnet-name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet --subnet ${AWS_COMMON_NAME}_${RANDOM_ID}_subnet --http-settings-cookie-based-affinity Enabled --servers 10.0.0.4 10.0.0.5
-  ERROR_CODE="$?"
-  echo "ERROR_CODE=${ERROR_CODE}"
-  
   #deleting 
-  #az network application-gateway delete --resource-group ${RESOURCE_GROUP} --name ${AWS_COMMON_NAME}_${RANDOM_ID}_app_gw
-  #az network vnet subnet delete --name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet --resource-group ${RESOURCE_GROUP} --vnet-name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet
-  #az network vnet delete --resource-group ${RESOURCE_GROUP} --name ${AWS_COMMON_NAME}_${RANDOM_ID}_vnet
+  debug "deleting nsg: ${LIGHT_YELLOW}${AZ_RG_NSG}"
+  az network nsg delete --resource-group ${RESOURCE_GROUP} --name ${AZ_RG_NSG}
+  debug "deleting subnet: ${LIME}${AZ_RG_SUBNET}"
+  az network vnet subnet delete --name ${AZ_RG_SUBNET} --resource-group ${RESOURCE_GROUP} --vnet-name ${AZ_RG_VNET}
+  debug "deleting nat gateway: ${DARK_GREEN}${AZ_RG_NAT_GW}"
+  az network nat gateway delete --resource-group ${RESOURCE_GROUP} --name ${AZ_RG_NAT_GW}
+  debug "deleting vnet: ${YELLOW}${AZ_RG_VNET}"
+  az network vnet delete --resource-group ${RESOURCE_GROUP} --name ${AZ_RG_VNET}
 done

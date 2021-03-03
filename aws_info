@@ -151,11 +151,13 @@ then
   then
     inf ""
     inf "${MAGENTA}AWS VPCs:"
-    VPC_ID=$(jq -r '.Vpcs[].VpcId' "${TMP}/${AWS_VPCS}_full.json")
-    inf "  VpcID: ${YELLOW}${VPC_ID}"
-    for VPC_CIDR_BLOCK in $(jq -r '.Vpcs[].CidrBlockAssociationSet[].CidrBlock' "${TMP}/${AWS_VPCS}_full.json")
+    for VPC_ID in $(jq -r '.Vpcs[].VpcId' "${TMP}/${AWS_VPCS}_full.json")
     do
-      inf "    CidrBlock: ${LIME}${VPC_CIDR_BLOCK}"
+      inf "  VpcID: ${YELLOW}${VPC_ID}"
+      for VPC_CIDR_BLOCK in $(jq -r '.Vpcs[].CidrBlockAssociationSet[].CidrBlock' "${TMP}/${AWS_VPCS}_full.json")
+      do
+        inf "    CidrBlock: ${LIME}${VPC_CIDR_BLOCK}"
+      done
     done
   fi
 else
@@ -168,10 +170,12 @@ then
   then
     inf ""
     inf "${MAGENTA}AWS IGWs:"
-    IGW_ID=$(jq -r '.InternetGateways[].InternetGatewayId' "${TMP}/${AWS_IGWS}_full.json")
-    inf "  IgwID: ${YELLOW}${IGW_ID}"
-    VPC_ID_IGW=$(jq -r '.InternetGateways[].Attachments[].VpcId' "${TMP}/${AWS_IGWS}_full.json")
-    inf "    attached to VpcID: ${YELLOW}${VPC_ID_IGW}"
+    for IGW_ID in $(jq -r '.InternetGateways[].InternetGatewayId' "${TMP}/${AWS_IGWS}_full.json")
+    do
+      inf "  IgwID: ${YELLOW}${IGW_ID}"
+      VPC_ID_IGW=$(jq -r --arg igw_id ${IGW_ID} '.InternetGateways[] | select(.InternetGatewayId == $igw_id) | .Attachments[].VpcId' "${TMP}/${AWS_IGWS}_full.json")
+      inf "    attached to VpcID: ${YELLOW}${VPC_ID_IGW}"
+    done
   fi
 else
   warn "  There is no IGW(s)"

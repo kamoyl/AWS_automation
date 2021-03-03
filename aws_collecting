@@ -27,6 +27,7 @@ aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-iam-instance-profile-as
 aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-vpcs                                    > "${TMP}/${AWS_VPCS}_full.json"                2>"${LOG}/${AWS_VPCS}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-internet-gateways                       > "${TMP}/${AWS_IGWS}_full.json"                2>"${LOG}/${AWS_IGWS}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-route-tables                            > "${TMP}/${AWS_ROUTE_TBLS}_full.json"          2>"${LOG}/${AWS_ROUTE_TBLS}.log" &
+aws ${AWS_PROFILE_USE_CHECK[*]} ec2             describe-nat-gateways                            > "${TMP}/${AWS_NAT_GWS}_full.json"                2>"${LOG}/${AWS_NAT_GWS}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} lambda          list-functions                                   > "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json"    2>"${LOG}/${AWS_LAMBDA_FUNCTIONS}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} iam             list-roles                                       > "${TMP}/${AWS_ROLES}_full.json"               2>"${LOG}/${AWS_ROLES}.log" &
 aws ${AWS_PROFILE_USE_CHECK[*]} iam             list-policies                                    > "${TMP}/${AWS_POLICIES}_full.json"            2>"${LOG}/${AWS_POLICIES}.log" &

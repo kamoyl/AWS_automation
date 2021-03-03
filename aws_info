@@ -154,7 +154,8 @@ then
     for VPC_ID in $(jq -r '.Vpcs[].VpcId' "${TMP}/${AWS_VPCS}_full.json")
     do
       inf "  VpcID: ${YELLOW}${VPC_ID}"
-      for VPC_CIDR_BLOCK in $(jq -r '.Vpcs[].CidrBlockAssociationSet[].CidrBlock' "${TMP}/${AWS_VPCS}_full.json")
+      #for VPC_CIDR_BLOCK in $(jq -r --arg vpc_id ${VPC_ID} '.Vpcs[].CidrBlockAssociationSet[].CidrBlock' "${TMP}/${AWS_VPCS}_full.json")
+      for VPC_CIDR_BLOCK in $(jq -r --arg vpc_id ${VPC_ID} '.Vpcs[] | select(.VpcId == $vpc_id) | .CidrBlockAssociationSet[].CidrBlock' "${TMP}/${AWS_VPCS}_full.json")
       do
         inf "    CidrBlock: ${LIME}${VPC_CIDR_BLOCK}"
       done
@@ -180,21 +181,47 @@ then
 else
   warn "  There is no IGW(s)"
 fi
-#routing tables
-if [ -s "${TMP}/${AWS_ROUTE_TBLS}_full.json" ]
+
+#NAT GW
+if [[ ${VERBOSE} == yes ]]
 then
-  if [[ ${VERBOSE} == yes ]]
+  inf ""
+  inf "${MAGENTA}AWS NAT GWs:"
+  if [ -s "${TMP}/${AWS_NAT_GWS}_full.json" ] && [ ! -z $(jq -r '.NatGateways[]' "${TMP}/${AWS_NAT_GWS}_full.json" | head -n1) ]
   then
-    inf ""
-    inf "${MAGENTA}AWS routing tables:"
-    for ROUTING_TABLE in $(jq -r '.RouteTables[].RouteTableId' "${TMP}/${AWS_ROUTE_TBLS}_full.json")
+    GW_ID=$(jq -r '.NatGateways[].NatGatewayId' "${TMP}/${AWS_NAT_GWS}_full.json")
+    SUBNET_ID=$(jq -r '.NatGateways[].SubnetId' "${TMP}/${AWS_NAT_GWS}_full.json")
+    VPC_ID=$(jq -r '.NatGateways[].VpcId' "${TMP}/${AWS_NAT_GWS}_full.json")
+    for NET_ID in $(jq -r '.NatGateways[].NatGatewayAddresses[].NetworkInterfaceId' "${TMP}/${AWS_NAT_GWS}_full.json")
     do
-      inf "  Routing table ID: ${LIME}${ROUTING_TABLE}"
+      PRIVATE_IP=$(jq -r --arg net_id ${NET_ID} '.NatGateways[].NatGatewayAddresses[] | select(.NetworkInterfaceId == $net_id) | .PrivateIp' "${TMP}/${AWS_NAT_GWS}_full.json")
+      PUBLIC_IP=$(jq -r --arg net_id ${NET_ID} '.NatGateways[].NatGatewayAddresses[] | select(.NetworkInterfaceId == $net_id) | .PublicIp' "${TMP}/${AWS_NAT_GWS}_full.json")
     done
+    inf "  NAT gateway: ${YELLOW}${GW_ID}${CYAN}, for subnet ID: ${DARK_GREEN}${SUBNET_ID}"
+    inf "    network ID: ${YELLOW}${NET_ID}"
+    inf "      with private IP: ${LIME}${PRIVATE_IP}"
+    inf "      with public IP: ${LIME}${PUBLIC_IP}"
+  else
+    warn "  There is no NAT GW(s)"
   fi
-else
-  warn "  There is no routing table(s)"
 fi
+
+#routing tables
+if [[ ${VERBOSE} == yes ]]
+then
+  inf ""
+  inf "${MAGENTA}AWS routing tables:"
+  if [ -s "${TMP}/${AWS_ROUTE_TBLS}_full.json" ] && [ ! -z $(jq -r '.RouteTables[]' "${TMP}/${AWS_ROUTE_TBLS}_full.json" | head -n1) ] 
+  then
+      for ROUTING_TABLE in $(jq -r '.RouteTables[].RouteTableId' "${TMP}/${AWS_ROUTE_TBLS}_full.json")
+      do
+        inf "  Routing table ID: ${LIME}${ROUTING_TABLE}"
+      done
+  else
+    warn "  There is no routing table(s)"
+  fi
+fi
+
 #subnets
 if [ -s "${TMP}/${AWS_SUBNETS_DETAILS}_full.json" ]
 then

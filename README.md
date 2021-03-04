@@ -114,6 +114,235 @@ Each script without any parameter will throw help, but:
 - *[slack emoji](https://www.webfx.com/tools/emoji-cheat-sheet)*
 - *[markdown guide](https://www.markdownguide.org/basic-syntax)*
 
+* __* corrected cidr presentation or VPCs__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 3 Mar 2021 12:06:59 +0100
+    
+    * added NAT gateways
+    
+    * corected presenting if not existing/not configured AWS service
+    
+
+* __* added collecting more then one VPC__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 3 Mar 2021 10:18:41 +0100
+    
+    * collecting internet gateways and rtelated VPC(s) - and not the only one like
+    previously
+    
+
+* __* added some constrains to check aws, az, and jq commands - as not needed except of those scripts__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 2 Mar 2021 12:38:37 +0100
+    
+    * added creating and destroynig Azure network
+    
+
+* __* checking aws version is ONLY when script starts with aws___
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Sat, 27 Feb 2021 22:16:03 +0100
+    
+    * added similar process to Azure Cloud
+    
+
+* __* changed place with counting runtime functions__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 24 Feb 2021 16:28:24 +0100
+    
+    
+
+* __* due to differernt crons I had to rewrite events and rules naming - without * and ?__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 23 Feb 2021 12:31:59 +0100
+    
+    * updated config to properly use ip and ifconfig
+    
+
+* __* added runtime as a funtion, to easily analaze where script needs optimization__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 19 Feb 2021 21:23:55 +0100
+    
+    * permissions and trust to lambda for events is added only when target exists,
+    whe it doesn;t exists it is removed
+    
+
+* __* added runtime function__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 18 Feb 2021 14:04:41 +0100
+    
+    * migrated some staff from inf to debug and show only when VERBOSE
+    
+    * optimize checking and applying permissions and trust to Lambda run
+    
+    * Added runtime for almost each of the part of collected info
+    
+
+* __* Corrected/added permissions from lambda to events__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 16 Feb 2021 23:09:25 +0100
+    
+    * some small issues corrected
+    
+    * a bit of cleaning
+    
+
+* __* lots of parallel run instead of linear... gained about 30% of time during run__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Tue, 9 Feb 2021 15:51:37 +0100
+    
+    
+
+* __* corrected AMI creation__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 4 Feb 2021 15:51:35 +0100
+    
+    * lambda OS update updated
+    
+    * added ami remowal
+    
+
+* __* listing KMS keys__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 4 Feb 2021 12:37:35 +0100
+    
+    * added encryptions KeyID if volume/snapshot is encrypted
+    
+    * added creation ami, and tested lambda for creating ami automatically
+    
+    * added notification for AMI creation
+    
+    * creating instance is now a function
+    
+    * extra function for enabling instance detailed monitoring
+    
+
+* __* small correction of notifications__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 3 Feb 2021 13:21:31 +0100
+    
+    * added a lambda to create an image from deployed EC2 with all possible updates
+    - it will also works when there is no AMI, and AWS one is taken with -A
+    
+
+* __* corrected collecting roles and policies, and relations to them, due to one policy can be attached to many roles, and one role can have attached many polices, which were earlier not taken into consideration, and ... there was no isseu erlier__
+
+    [root](root@ip-10-28-101-60.eu-west-1.compute.internal) - Wed, 3 Feb 2021 12:48:40 +0100
+    
+    
+
+* __* corrected mounting buckets check__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 3 Feb 2021 11:40:40 +0100
+    
+    
+
+* __* corrected mounting buckets check__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 3 Feb 2021 11:35:54 +0100
+    
+    
+
+* __* corrected mounting buckets check__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 3 Feb 2021 11:30:35 +0100
+    
+    
+
+* __* corrected empty space generating during terminal notifications__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 3 Feb 2021 11:25:30 +0100
+    
+    * added list of policies connected to rule instead on only ONE policy
+    
+    * corrected IFS before and after change
+    
+
+* __* added slack notification function__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Mon, 1 Feb 2021 14:15:51 +0100
+    
+    * corrected all IFS occurances, so back and forth - there were really weird
+    issues
+    
+    * added checking of amount of AMIs - there should be lambda run once a
+    week/month to create newly updated one with yum update I suppose
+    
+    * some small updates
+    
+
+* __* Added extra info about IFS__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 29 Jan 2021 14:13:41 +0100
+    
+    * checking and assigning proper IFS begore and after some commands (important
+    due to very weird issues sometimes)
+    
+
+* __* corrected retention time for logs for lambdas__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 27 Jan 2021 14:47:01 +0100
+    
+    * speed bucket management little bit
+    
+    * started counting AMIs to remove them when over then, and create automatically
+    when needed
+    
+    * change default user to ec2_user when nothing chosen
+    
+
+* __* added retention policy to logs - checking and applying__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 22 Jan 2021 14:26:34 +0100
+    
+    * all lambda/events is tested and works well
+    
+
+* __* slightly changed title of slack nofification__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 21 Jan 2021 12:20:05 +0100
+    
+    * lambda might be scheduled in any way now, and might also be NOT scheduled at
+    all
+    
+    * eventbridge rules are now taken into consideration about amount of targets
+    
+    * a bit of cleaning of code
+    
+
+* __* changed completely collecting eventbridge rules and all targets of all rules__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 20 Jan 2021 21:24:49 +0100
+    
+    * added checking quota of targets per rule
+    
+    * added SNS to be scollected
+    
+    * deploy_lambda is rewritten and tested
+    
+    * added few more lambda functions
+    
+    * lambda management with events is managed now with all needed checks
+    
+    * there is an option to deploy lambda without schedule
+    
+    * few optimizations
+    
+
+* __* change cron to common schedule - so understands also rate__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 15 Jan 2021 12:22:21 +0100
+    
+    * manage all tests and deploys new report
+    
+    * corrected slack script names
+    
+
+* __Changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 14 Jan 2021 21:58:39 +0100
+    
+    
+
 * __* updated Public IP entry__
 
     [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 14 Jan 2021 16:13:40 +0100

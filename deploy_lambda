@@ -133,20 +133,20 @@ do
       then
         if [[ ${SCHEDULE_DAY_OF_MONTH} == "?" ]] || [[ ${SCHEDULE_DAY_OF_MONTH} == "*" ]]
         then
-          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1}')_lambda_rule"
-          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1}')_lambda_event"
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1}' | sed 's/,/-/g')_lambda_rule"
+          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1}' | sed 's/,/-/g')_lambda_event"
         else
-          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_MONTH_"$3}')_lambda_rule"
-          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_MONTH_"$3}')_lambda_event"
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_MONTH_"$3}' | sed 's/,/-/g')_lambda_rule"
+          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_MONTH_"$3}' | sed 's/,/-/g')_lambda_event"
         fi
       else
         if [[ ${SCHEDULE_DAY_OF_MONTH} == "?" ]] || [[ ${SCHEDULE_DAY_OF_MONTH} == "*" ]]
         then
-          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_rule"
-          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}')_lambda_event"
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}' | sed 's/,/-/g')_lambda_rule"
+          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}' | sed 's/,/-/g')_lambda_event"
         else
-          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5"_MONTH_"$3}')_lambda_rule"
-          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5"_MONTH_"$3}')_lambda_event"
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5"_MONTH_"$3}' | sed 's/,/-/g')_lambda_rule"
+          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5"_MONTH_"$3}' | sed 's/,/-/g')_lambda_event"
         fi
       fi
     elif [[ ${EVENT_SCHEDULE} =~ ^rate.* ]]

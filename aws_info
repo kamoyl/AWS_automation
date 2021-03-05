@@ -758,6 +758,15 @@ then
         do
           inf "    with subscription: ${BROWN}${SUBSCRIPTION_ARN}"
         done
+        #ToDo: is topic encrypted ?
+        #aws ${AWS_PROFILE_USE_CHECK[*]} sns set-topic-attributes --topic-arn "${TOPIC_ARN}" --attribute-name KmsMasterKeyId --attribute-value "${SNS_KEY_ID}"
+        TOPIC_ARN_ENCRYPTED_CHECK=$(aws ${AWS_PROFILE_USE_CHECK[*]} sns get-topic-attributes --topic-arn "${TOPIC_ARN}" | jq -r '.Attributes.KmsMasterKeyId')
+        if [ ! -z ${TOPIC_ARN_ENCRYPTED_CHECK} ]
+        then
+          inf "      and it is encrypted with: ${LIGHT_BLUE}${TOPIC_ARN_ENCRYPTED_CHECK}"
+        else
+          warn "      and it should be encrypted"
+        fi
       fi
     done
   fi

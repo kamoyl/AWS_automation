@@ -100,6 +100,7 @@ az network nsg list > "${TMP}/${AZ_SECURITY_GROUPS}_full.json" 2>"${LOG}/${AZ_SE
 #az network application-gateway list > "${TMP}/${AZ_AGWS}_full.json" 2>"${LOG}/${AZ_AGWS}.log" &
 az network nat gateway list > "${TMP}/${AZ_NAT_GWS}_full.json" 2>"${LOG}/${AZ_NAT_GWS}.log" & 
 az account list > "${TMP}/${AZ_ACCOUNT}_full.json"  2>"${LOG}/${AZ_ACCOUNT}.log" &
+az storage account list
 wait
 if [ ! -z $(jq -r '.[]' "${TMP}/${AZ_ACCOUNT}_full.json" | head -n1) ]
 then

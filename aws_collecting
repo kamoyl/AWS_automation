@@ -107,8 +107,7 @@ then
               then
                 lambda_add_permission_to_trust_principal ${EVENT_TARGET_NAME} ${EVENT_EVENT_NAME} events.amazonaws.com ${EVENT_RULE} > "${LOG}/${AWS_EVENTS_RULES}_permissions_adding.log" 2>&1
               else
-                echo "removing target: ID: ${EVENT_TARGET_ID}, ${EVENT_TARGET_NAME}, from a event rule: ${EVENT_TARGET_NAME}"
-                aws ${AWS_PROFILE_USE_CHECK[*]} events remove-targets --rule ${EVENT_RULE_NAME} --ids ${EVENT_TARGET_ID}
+                aws ${AWS_PROFILE_USE_CHECK[*]} events remove-targets --rule ${EVENT_RULE_NAME} --ids ${EVENT_TARGET_ID} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_TARGET_ID}_removal.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_TARGET_ID}_removal.log"
               fi
             done
           done

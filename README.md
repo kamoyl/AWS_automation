@@ -114,6 +114,38 @@ Each script without any parameter will throw help, but:
 - *[slack emoji](https://www.webfx.com/tools/emoji-cheat-sheet)*
 - *[markdown guide](https://www.markdownguide.org/basic-syntax)*
 
+* __* added removal of the oldest AMI - when there are more then 2 AMIs only__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 12 Mar 2021 15:25:30 +0100
+    
+    * checking if there is AMI removal process, so then lambdas must be updated -
+    with the newest AMI
+    
+    * updating Lambdas is multitasking - 8x faster then linear
+    
+
+* __* added removing target ID from the EventRule if the actual target (for example Lambda function) doesn&#39;t exist__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 12 Mar 2021 10:41:28 +0100
+    
+    
+
+* __* added check if SNS topic is encrypted__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Fri, 5 Mar 2021 14:54:06 +0100
+    
+    * added few things to az_info
+    
+    * corrected lambda event rule andd event name if there is a comma in a cron
+    definition
+    
+
+* __* updated changelog__
+
+    [Kamil Czarnecki](kamoyl@outlook.com) - Thu, 4 Mar 2021 09:47:23 +0100
+    
+    
+
 * __* corrected cidr presentation or VPCs__
 
     [Kamil Czarnecki](kamoyl@outlook.com) - Wed, 3 Mar 2021 12:06:59 +0100

@@ -51,6 +51,7 @@ VERBOSE=no
 REDEPLOYMENT=no
 CLEANING=no
 XTRA_CLEANING=no
+AMI_TOBE_REMOVED=""
 while getopts ":o:p:vCx" ARG
 do
   case "${ARG}" in
@@ -562,7 +563,6 @@ inf ""
 inf "${MAGENTA}EC2 AMIs"
 if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | head -n1) ]
 then
-  #ToDo:add a lambda process once a week/month to create newest API
   for AWS_AMI_IMAGE_ID in $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
   do
     AWS_AMI_NAME=$(jq -r --arg image_id ${AWS_AMI_IMAGE_ID} '.Images[] | select(.ImageId == $image_id) | .Name' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
@@ -759,13 +759,13 @@ then
           inf "    with subscription: ${BROWN}${SUBSCRIPTION_ARN}"
         done
         #ToDo: is topic encrypted ?
-        #aws ${AWS_PROFILE_USE_CHECK[*]} sns set-topic-attributes --topic-arn "${TOPIC_ARN}" --attribute-name KmsMasterKeyId --attribute-value "${SNS_KEY_ID}"
         TOPIC_ARN_ENCRYPTED_CHECK=$(aws ${AWS_PROFILE_USE_CHECK[*]} sns get-topic-attributes --topic-arn "${TOPIC_ARN}" | jq -r '.Attributes.KmsMasterKeyId')
         if [ ! -z ${TOPIC_ARN_ENCRYPTED_CHECK} ]
         then
           inf "      and it is encrypted with: ${LIGHT_BLUE}${TOPIC_ARN_ENCRYPTED_CHECK}"
         else
           warn "      and it should be encrypted"
+          #aws ${AWS_PROFILE_USE_CHECK[*]} sns set-topic-attributes --topic-arn "${TOPIC_ARN}" --attribute-name KmsMasterKeyId --attribute-value "${SNS_KEY_ID}"
         fi
       fi
     done
@@ -950,15 +950,22 @@ then
   else
     for AWS_LAMBDA_FUNCTION_NAME in $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Functions[] | select(.FunctionName | startswith($aws_default_name) | not) | .FunctionName' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
     do
-      inf "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
-      if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
-      then
-        inf "    removing Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
-        aws ${AWS_PROFILE_USE_CHECK[*]} lambda delete-function --function-name ${AWS_LAMBDA_FUNCTION_NAME}
-      fi
+      (
+        inf "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+        if [[ ! -z ${AMI_TOBE_REMOVED} ]] && [[ ${CLEANING} == yes ]]
+        then
+          lambda_function_update ${AWS_LAMBDA_FUNCTION_NAME}
+        elif [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]]
+        then
+          inf "    removing Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+          aws ${AWS_PROFILE_USE_CHECK[*]} lambda delete-function --function-name ${AWS_LAMBDA_FUNCTION_NAME}
+          #ToDo: migrate removing lambda to function + error handling
+        fi
+      ) &
     done
   fi
 fi
+wait
 end_time_collecting
 LAMBDA_CHECK_TIME=${RUNTIME}
 if [[ ${VERBOSE} == yes ]]

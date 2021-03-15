@@ -63,7 +63,7 @@ $0 -L/-E -p PROFILE_NAME  [-u REMOTE_USERNAME] [-R] [-A AMI_ID] [-I INSTANCE_TYP
                      example: ${YELLOW}Amazon Linux 2 AMI (HVM), SSD Volume Type (${CYAN}ami-0ce1e3f77cd41957e${YELLOW})${BLUE} - for ${YELLOW}eu-west-1${BLUE} AZ
                      example: ${YELLOW}CentOS 7 (x86_64) - with Updates HVM (${CYAN}ami-05a178e6f938f2c39${YELLOW})${BLUE} - for ${YELLOW}eu-west-1${BLUE} AZ
                      example of find: ${CYAN}\"aws --profile saml ec2 describe-images --filters \"Name=description,Values=CentOS 7*\" | jq '.Images[].Description'\"
-    ${LIME}-I${BLUE}  ${WINE}[optional]${BLUE} - ${BROWN}INSTANCE_TYPE${BLUE}  (if ommited, then ${YELLOW}\"t3.xlarge\"${BLUE} is picked up)
+    ${LIME}-I${BLUE}  ${WINE}[optional]${BLUE} - ${BROWN}INSTANCE_TYPE${BLUE}  (if ommited, then ${YELLOW}\"t3.small\"${BLUE} is picked up)
     ${LIME}-o${BLUE}  ${BROWN}OUTPUT${BLUE} directory - where to store ALL LOGs and TEMP files
         (default directory is: ${CYAN}${HOME}/var${BLUE} and TMP and LOG are subdirectories to var)
     ${LIME}-v${BLUE}  verbose

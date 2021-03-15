@@ -33,7 +33,7 @@ usage()
 {
 echo "
 ${CYAN}Usage:${BRIGHT}${WHITE}
-$0 [-o DIRECTORY] -v [-O OWNER_ID] [-C]
+$0 [-o DIRECTORY] -v [-O OWNER_ID] [-C] [-p] [-x] [-I]
 
     ${NORMAL}${CYAN}This script checks and looks for difference between repositories and
         ENV - and take some actions later on, producting report of what has been done${BLUE}
@@ -41,6 +41,7 @@ $0 [-o DIRECTORY] -v [-O OWNER_ID] [-C]
         (default directory is: ${CYAN}${HOME}/var${BLUE} and TMP and LOG are subdirectories to var)
     ${LIME}-p${BLUE}  ${RED}[mandatory outside AWS env]${BLUE} - ${BROWN}PROFILE${BLUE} name stored in ~/.aws/config
     ${LIME}-C${BLUE}  CLEANING (${WINE}WARNING${BLUE}) - removing all running/stopped instance(s) (terminates them) and all volumes
+    ${LIME}-I${BLUE}  ${WINE}[optional]${BLUE} - ${BROWN}INSTANCE_TYPE${BLUE}  (if ommited, then ${YELLOW}\"t3.small\"${BLUE} is picked up)
     ${LIME}-x${BLUE}  only works with [-C] - CLEANING (${RED}WARNING${BLUE}) - removes: S3 buckets (only empty), Lambda functions, events-busses etc.
     ${LIME}-v${BLUE}  verbose${RESET}"
     1>&2;
@@ -52,7 +53,7 @@ REDEPLOYMENT=no
 CLEANING=no
 XTRA_CLEANING=no
 AMI_TOBE_REMOVED=""
-while getopts ":o:p:vCx" ARG
+while getopts ":o:p:I:vCx" ARG
 do
   case "${ARG}" in
         v)
@@ -66,6 +67,10 @@ do
         p)
             p=${OPTARG}
             AWS_PROFILE=${p}
+            ;;
+        I)
+            I=${OPTARG}
+            AWS_INSTANCE_TYPE=${I}
             ;;
         o)
             o=${OPTARG}
@@ -97,6 +102,14 @@ then
   AWS_PROFILE_USE_CHECK=""
 else
   AWS_PROFILE_USE_CHECK=(--profile ${AWS_PROFILE})
+fi
+
+if [ -z ${I} ]
+then
+  AWS_INSTANCE_TYPE="t3.small"
+  #AWS_INSTANCE_TYPE="t2.micro"
+  #AWS_INSTANCE_TYPE="t3.xlarge"
+  I=${AWS_INSTANCE_TYPE}
 fi
 
 if [ ${CALLING} -eq 0 ]
@@ -942,6 +955,10 @@ start_time_collecting
 if [ -s "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json" ]
 then
   inf ""
+  #prerequisites
+  aws_key_create
+  PERMISSIONS_BOUNDARY_ARN="$(jq -r '.Policies[] | select(.PolicyName | contains("-permissions-boundary")) | .Arn' "${TMP}/${AWS_POLICIES}_full.json")"
+  aws_default_subnet
   inf "${MAGENTA}Lambda functions:"
   AWS_LAMBDA_FUNCTION_NAMES=$(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Functions[] | select(.FunctionName | startswith($aws_default_name) | not) | .FunctionName' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json" | head -n1)
   if [ -z ${AWS_LAMBDA_FUNCTION_NAMES} ]

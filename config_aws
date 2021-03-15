@@ -100,6 +100,8 @@ else
   SECURITY_GROUP_EC2_NAME="${AWS_NAMES_PREFIX}_ec2-sec_group-for_${DEFAULT_INET_IP}"
 fi
 
+AWS_INSTANCE_METADATA_ADRESS="http://169.254.169.254/latest/meta-data/"
+
 log_tmp_maintenance()
 {
   if [ $# -eq 1 ]
@@ -326,6 +328,7 @@ aws_newest_ami()
         done
         printf '\n'
       done
+      inf "    Image: ${BROWN}${LATEST_AMI_ID}${WINE} is ${GREEN}available${CYAN}..."
     fi
     if [ ${AWS_AMI_IMAGE_AMOUNT} -ge 3 ]
     then

@@ -225,7 +225,7 @@ aws_key_create()
   if [ -s "${HOME}/.ssh/id_rsa" ]
   then
     inf "  I found id_rsa key of current user: ${YELLOW}${USER}${CYAN}, making fingerprint"
-    CURRENT_USER_FINGERPRINT=$(ssh-keygen -f ${HOME}/.ssh/id_rsa.pub -e -m PKCS8 | openssl pkey -pubin -outform DER | openssl md5 -c)
+    CURRENT_USER_FINGERPRINT=$(ssh-keygen -f ${HOME}/.ssh/id_rsa.pub -e -m PKCS8 | openssl pkey -pubin -outform DER | openssl md5 -c | awk '{print $NF}')
     inf "    Checking if current user: ${YELLOW}${USER}${CYAN} fingerprint exists in AWS EC2"
     if [ -s "${TMP}/${AWS_EC2_KEYPAIRS}_full.json" ]
     then

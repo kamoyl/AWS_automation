@@ -71,7 +71,7 @@ do
   then
     aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${SOURCE_NETWORK}"
   else
-    inf "      Source network: ${LIME}${SOURCE_NETWORK}${CYAN} has already been added to security group: ${YELLOW}${SECURITY_GROUP_LAMBDA_NAME}"
+    warn "      Source network: ${LIME}${SOURCE_NETWORK}${WINE} has already been added to security group: ${YELLOW}${SECURITY_GROUP_ID}"
   fi
   ) &
 done
@@ -82,6 +82,8 @@ then
     aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${EXTERNAL_INET_IP}/32"
   fi
 fi
+inf "    ${MAGENTA}Checking if ${YELLOW}${SECURITY_GROUP_LAMBDA_NAME}${MAGENTA} has proper egress configuration"
+aws_security_group_egress_add ${SECURITY_GROUP_ID}
 wait
 #AWS LAMBDA: security groups
 END_DEPLOY_TIME=$(date +%s.%4N)

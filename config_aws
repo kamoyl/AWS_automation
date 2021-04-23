@@ -17,7 +17,14 @@ fi
 #SOURCE_NETWORKS=""
 #SLACK_WEB_HOOK=""
 #SLACK_TOKEN=""
+#egress accessed networks:
 #prerequisites variables
+
+#this list should be crweated automatically...
+
+#nslookup hooks.slack.com | grep -A1 "hooks.slack.com" | grep "Address:" | awk -F\: '{print $2}' | sed 's/^[[:space:]]*//g;s/[[:space:]]*$//g'
+
+AWS_EGRESS_LIST=(0.0.0.0/0:22:tcp 0.0.0.0/0:25:tcp 0.0.0.0/0:37:tcp 0.0.0.0/0:53:tcp 0.0.0.0/0:53:udp 0.0.0.0/0:80:tcp 0.0.0.0/0:110:tcp 0.0.0.0/0:123:tcp 0.0.0.0/0:143:tcp 0.0.0.0/0:443:tcp 0.0.0.0/0:465:tcp 0.0.0.0/0:587:tcp 0.0.0.0/0:993:tcp 0.0.0.0/0:995:tcp 0.0.0.0/0:1025:tcp 0.0.0.0/0:7999:tcp)
 
 if [ -z ${USER} ]
 then
@@ -1777,15 +1784,45 @@ if [ $# -ne 1 ]
     SECURITY_GROUP_NAME="${1}"
   fi
   inf "  Creating default security group for new instance"
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 create-security-group --description "Temporary security group for EC2 instance" --group-name "${SECURITY_GROUP_NAME}" --vpc-id "${DEFAULT_VPC}" > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_create_security_group.json"  2>&1
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 create-security-group --description "Temporary security group for EC2 instance" --group-name "${SECURITY_GROUP_NAME}" --vpc-id "${DEFAULT_VPC}" > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_create_security_group.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_create_security_group.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then
     export SECURITY_GROUP_ID=$(jq -r '.GroupId' "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_create_security_group.json")
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups --group-ids ${SECURITY_GROUP_ID} > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_full.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_full.log"
     inf "    Default security group: ${BROWN}${SECURITY_GROUP_ID}${CYAN} has been created properly"
+    inf "      Removing inCompliant Egress rules from newly created security group"
+    if [[ $(jq -r '.SecurityGroups[].IpPermissionsEgress[].IpRanges[] | select(.CidrIp == "0.0.0.0/0") | .CidrIp' "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_full.json") == "0.0.0.0/0" ]]
+    then
+      debug "        Removing: ${DARK_GREEN}0.0.0.0/0"
+      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 revoke-security-group-egress --group-id ${SECURITY_GROUP_ID} --cidr "0.0.0.0/0" --protocol all > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_ipv4egress_full.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_ipv4egress_full.log"
+    fi
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      debug "          Removed: ${DARK_GREEN}0.0.0.0/0"
+    else
+      error "          ${DARK_GREEN}0.0.0.0/0${RED} cannot be removed, exiting"
+      debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_ipv4egress_full.log"
+      failed
+    fi
+    if [ $(jq -r '.SecurityGroups[].IpPermissionsEgress[].Ipv6Ranges[] | select(.CidrIpv6 == "::/0") | .CidrIpv6' "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_full.json") == "::/0" ]
+    then
+      debug "        Removing: ${DARK_GREEN}::/0"
+      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 revoke-security-group-egress --group-id ${SECURITY_GROUP_ID} --ip-permissions "IpProtocol=all,Ipv6Ranges=[{CidrIpv6=::/0}]" > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_ipv6egress_full.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_ipv6egress_full.log"
+    fi
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      debug "          Removed: ${DARK_GREEN}::/0"
+    else
+      error "          ${DARK_GREEN}::/0${RED} cannot be removed, exiting"
+      debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_NAME}_ipv6egress_full.log"
+      failed
+    fi
   else
     error "    security group: ${DARK_GREEN}${SECURITY_GROUP_ID}${RED} creation failed, exiting"
-    debug "      LOG FILE: ${YELLOW}${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_create_security_group.json"
+    debug "      LOG FILE: ${YELLOW}${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_create_security_group.log"
     failed
   fi
 }
@@ -1825,6 +1862,52 @@ if [ $# -ne 1 ]
   fi
 }
 
+aws_security_group_egress_add()
+{
+  if [ $# -ne 1 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs one parameter: ${YELLOW}(1)security_group_Id"
+    ERROR_CODE="1"
+    failed
+  else
+    SECURITY_GROUP_ID="${1}"
+  fi
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups --group-ids ${SECURITY_GROUP_ID} > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.log"
+  CURRENT_IFS=${IFS}
+  IFS=${ORIGIFS}
+  for EGRESS_ENTRY in ${AWS_EGRESS_LIST[*]}
+  do
+    #(
+      EGRESS_CIDR=$(echo ${EGRESS_ENTRY} | awk -F\: '{print $1}')
+      for PORT in $(echo ${EGRESS_ENTRY} | awk -F\: '{print $2}' | sed 's/,/ /g')
+      do
+        for EGRESS_PROTOCOL in $(echo ${EGRESS_ENTRY} | awk -F\: '{print $3}' | sed 's/,/ /g')
+        do
+          if [ -z $(jq -r --arg port ${PORT} '.SecurityGroups[].IpPermissionsEgress[] | select(.FromPort | tostring | contains($port))' "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.json" | jq -r --arg cidr ${EGRESS_CIDR} 'select(.IpRanges[].CidrIp == $cidr)'  | jq -r --arg protocol ${EGRESS_PROTOCOL} 'select(.IpProtocol == $protocol)' | head -n1) ]
+          then
+            inf "      Adding destination socket: ${LIME}${EGRESS_CIDR}:${PORT}${CYAN}, protocol: ${BROWN}${EGRESS_PROTOCOL}${CYAN} to ${YELLOW}${SECURITY_GROUP_ID}"
+            aws ${AWS_PROFILE_USE_CHECK[*]} ec2 authorize-security-group-egress --group-id ${SECURITY_GROUP_ID} --protocol ${EGRESS_PROTOCOL} --port ${PORT} --cidr ${EGRESS_CIDR} >> "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_egress.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_egress.log"
+          ERROR_CODE="$?"
+          if [ ${ERROR_CODE} -eq 0 ]
+          then
+            inf "        Adding destination address(s): ${LIME}${EGRESS_CIDR}:${PORT}${CYAN} succedeed"
+            aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups --group-ids ${SECURITY_GROUP_ID} > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.log"
+          else
+            error "        Adding destination address(s): ${LIME}${EGRESS_CIDR}:${PORT}${RED} failed, exiting"
+            debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.log"
+            failed
+          fi
+        else
+          warn "      Socket: ${LIME}${EGRESS_CIDR}${WINE}:${GREEN}${PORT}${WINE}, protocol: ${BROWN}${EGRESS_PROTOCOL}${WINE} has already been added to security group: ${YELLOW}${SECURITY_GROUP_ID}"
+        fi
+      done
+    done
+    #) &
+  done
+  wait
+  IFS=${CURRENT_IFS}
+}
+
 aws_security_group_ingress_add()
 {
   if [ $# -ne 2 ]
@@ -1855,7 +1938,7 @@ aws_security_group_ingress_add()
       failed
     fi
   else
-    warn "      Source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${WINE} has already been added to ${YELLOW}${SECURITY_GROUP_ID}${WINE} security group"
+    warn "      Source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${WINE} has already been added to security group: ${YELLOW}${SECURITY_GROUP_ID}"
   fi
 }
 

@@ -371,7 +371,7 @@ then
                   \\\"short\\\": true
               },
               {
-                  \\\"value\\\": \\\"${AWS_INSTANCE_IPS}\\\",
+                  \\\"value\\\": \\\"${AWS_INSTANCE_IP}\\\",
                   \\\"short\\\": true
               },
               " >> "${TMP}/${AWS_INSTANCES_DETAILS}_slack.out"
@@ -388,7 +388,10 @@ then
         warn "    ${YELLOW}${AWS_INSTANCE_ID}${WINE} is actual instance, omitting"
       fi
     fi
-    aws_instance_monitoring ${AWS_INSTANCE_ID}
+    if ([[ ${CLEANING} == no ]] && [[ ${XTRA_CLEANING} == no ]]) || [[ ${AWS_INSTANCE_STATE^^} != TERMINATED ]]
+    then
+      aws_instance_monitoring ${AWS_INSTANCE_ID}
+    fi
   done
 else
   if [[ ${VERBOSE} == yes ]]
@@ -884,19 +887,19 @@ then
       else
         for AWS_IAM_ROLENAME in $(jq -r '.PolicyRoles[].RoleName' ${TMP}/${AWS_POLICY_ENTITIES}_${AWS_IAM_POLICY_NAME}_full.json)
         do
-          inf "    Policy: ${YELLOW}${AWS_IAM_POLICY_NAME}${CYAN} is attached to the role: ${YELLOW}${AWS_IAM_POLICY_NAME}"
+          inf "    Policy: ${YELLOW}${AWS_IAM_POLICY_NAME}${CYAN} is attached to the role: ${YELLOW}${AWS_IAM_ROLENAME}"
           if [[ ${CLEANING} == yes ]] && [[ ${XTRA_CLEANING} == yes ]] && [[ ${AWS_ZONE} == "N" ]]
           then
-            aws_detaching_policy_from_role ${AWS_IAM_POLICY_NAME} "${AWS_IAM_POLICY_ARN}"
+            aws_detaching_policy_from_role ${AWS_IAM_ROLENAME} "${AWS_IAM_POLICY_ARN}"
             aws_policy_removal "${AWS_IAM_POLICY_ARN}"
-            inf "      ${MAGENTA}Checking if role: ${YELLOW}${AWS_IAM_POLICY_NAME}${MAGENTA} is added to any instance profile..."
-            INSTANCE_PROFILE_ROLE_NAME=$(aws_list-instance-profiles-for-role "${AWS_IAM_POLICY_NAME}" && jq -r '.InstanceProfiles[].InstanceProfileName' "${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_POLICY_NAME}_full.json")
+            inf "      ${MAGENTA}Checking if role: ${YELLOW}${AWS_IAM_ROLENAME}${MAGENTA} is added to any instance profile..."
+            INSTANCE_PROFILE_ROLE_NAME=$(aws_list-instance-profiles-for-role "${AWS_IAM_ROLENAME}" && jq -r '.InstanceProfiles[].InstanceProfileName' "${TMP}/${AWS_INSTANCE_PROFILES}_${AWS_IAM_ROLENAME}_full.json")
             if [ -z ${INSTANCE_PROFILE_ROLE_NAME} ]
             then
-              aws_role_removal "${AWS_IAM_POLICY_NAME}"
+              aws_role_removal "${AWS_IAM_ROLENAME}"
             else
-              aws_removing_role_from_instance_profile "${AWS_IAM_POLICY_NAME}" "${INSTANCE_PROFILE_ROLE_NAME}"
-              aws_role_removal "${AWS_IAM_POLICY_NAME}"
+              aws_removing_role_from_instance_profile "${AWS_IAM_ROLENAME}" "${INSTANCE_PROFILE_ROLE_NAME}"
+              aws_role_removal "${AWS_IAM_ROLENAME}"
               aws_instance-profile_removal "${INSTANCE_PROFILE_ROLE_NAME}"
             fi
           fi
@@ -955,8 +958,10 @@ start_time_collecting
 if [ -s "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json" ]
 then
   inf ""
-  #prerequisites
-  aws_key_create
+  if [[ ${CLEANING} == no ]] && [[ ${XTRA_CLEANING} == no ]]
+  then
+    aws_key_create
+  fi
   PERMISSIONS_BOUNDARY_ARN="$(jq -r '.Policies[] | select(.PolicyName | contains("-permissions-boundary")) | .Arn' "${TMP}/${AWS_POLICIES}_full.json")"
   aws_default_subnet
   inf "${MAGENTA}Lambda functions:"
@@ -1093,6 +1098,7 @@ else
   fi
   inf "  current year (${BROWN}${CURRENT_YEAR}${CYAN}): ${LIGHT_YELLOW}${CURRENT_YEAR_COSTS} USD"
 fi
+wait
 end_time_collecting
 COSTS_CHECK_TIME=${RUNTIME}
 if [[ ${VERBOSE} == yes ]]
@@ -1117,7 +1123,7 @@ then
 fi
 
 END_AWS_TIME=$(date +%s.%4N)
-
+IFS=${ORIGIFS}
 if [[ ${VERBOSE} == no ]]
 then
   log_tmp_maintenance

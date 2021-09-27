@@ -15,6 +15,7 @@ then
     aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups > "${TMP}/${AWS_SECURITY_GROUPS}_full.json"
   fi
 fi
+
 #AWS EC2: security groups
 END_DEPLOY_TIME=$(date +%s.%4N)
 DEPLOY_TIME=$(echo "scale=4; x=(${END_DEPLOY_TIME} - ${START_DEPLOY_TIME}); if(x<1) print 0; x" | bc)
@@ -47,7 +48,8 @@ then
     aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${EXTERNAL_INET_IP}/32"
   fi
 fi
-
+inf "    ${MAGENTA}Checking if ${YELLOW}${SECURITY_GROUP_EC2_NAME}${MAGENTA} has proper egress configuration"
+aws_security_group_egress_add ${SECURITY_GROUP_ID}
 associating_instance-to-profile ${AWS_INSTANCE_DETAILS_ID} "${AWS_EC2_INSTANCES_PROFILE}"
 AWS_INSTANCE_PROFILES_ASSOCIATION_ID=$(jq -r '.IamInstanceProfileAssociation.AssociationId' "${TMP}/${AWS_INSTANCE_PROFILES_ASSOCIATIONS}_${AWS_INSTANCE_DETAILS_ID}_profile_association.json")
 is_instance_up ${AWS_INSTANCE_DETAILS_ID}

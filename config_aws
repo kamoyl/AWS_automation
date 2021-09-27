@@ -24,7 +24,8 @@ fi
 
 #nslookup hooks.slack.com | grep -A1 "hooks.slack.com" | grep "Address:" | awk -F\: '{print $2}' | sed 's/^[[:space:]]*//g;s/[[:space:]]*$//g'
 
-AWS_EGRESS_LIST=(0.0.0.0/0:22:tcp 0.0.0.0/0:25:tcp 0.0.0.0/0:37:tcp 0.0.0.0/0:53:tcp 0.0.0.0/0:53:udp 0.0.0.0/0:80:tcp 0.0.0.0/0:110:tcp 0.0.0.0/0:123:tcp 0.0.0.0/0:143:tcp 0.0.0.0/0:443:tcp 0.0.0.0/0:465:tcp 0.0.0.0/0:587:tcp 0.0.0.0/0:993:tcp 0.0.0.0/0:995:tcp 0.0.0.0/0:1025:tcp 0.0.0.0/0:7999:tcp)
+
+AWS_EGRESS_LIST=(0.0.0.0/0:22:tcp 0.0.0.0/0:25:tcp 0.0.0.0/0:37:tcp 0.0.0.0/0:53:tcp 0.0.0.0/0:53:udp 0.0.0.0/0:80:tcp 0.0.0.0/0:110:tcp 0.0.0.0/0:123:tcp 0.0.0.0/0:143:tcp 0.0.0.0/0:443:tcp 0.0.0.0/0:465:tcp 0.0.0.0/0:587:tcp 0.0.0.0/0:636:tcp 0.0.0.0/0:993:tcp 0.0.0.0/0:995:tcp 0.0.0.0/0:1025:tcp 0.0.0.0/0:7999:tcp)
 
 if [ -z ${USER} ]
 then
@@ -308,9 +309,10 @@ aws_newest_ami()
 {
   if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ]
   then
-    AWS_AMI_IMAGE_AMOUNT=$(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | wc -l)
-    LATEST_AMI_ID=$(jq -r '.Images[] | .CreationDate + " " + .ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | sort | tail -n1 | awk '{print $2}')
-    OLDEST_AMI_ID=$(jq -r '.Images[] | .CreationDate + " " + .ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | sort | head -n1 | awk '{print $2}')
+    #AWS_AMI_IMAGE_AMOUNT=$(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | wc -l)
+    AWS_AMI_IMAGE_AMOUNT=$(jq -r '.Images[] | .CreationDate + " " + .ImageId + " " + .Name' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | grep "kpn_" | wc -l)
+    LATEST_AMI_ID=$(jq -r '.Images[] | .CreationDate + " " + .ImageId + " " + .Name' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | grep "kpn_" | sort | tail -n1 | awk '{print $2}')
+    OLDEST_AMI_ID=$(jq -r '.Images[] | .CreationDate + " " + .ImageId + " " + .Name' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | grep "kpn_" | sort | head -n1 | awk '{print $2}')
     inf "  The latest AMI seems to be this one: ${BROWN}${LATEST_AMI_ID}"
     IMAGE_STATE=$(jq -r --arg ImageId ${LATEST_AMI_ID} '.Images[] | select(.ImageId == $ImageId) | .State' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
     if [[ ${IMAGE_STATE} == "available" ]]
@@ -585,7 +587,8 @@ aws_instance_removal()
     AWS_INSTANCE_ID="${1}"
   fi
   inf "    ${WINE}Terminating instance: ${YELLOW}${AWS_INSTANCE_ID}"
-  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 terminate-instances --instance-id ${AWS_INSTANCE_ID} > "${TMP}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination.json" 2>"${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination.log"
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 modify-instance-attribute --instance-id ${AWS_INSTANCE_ID} --attribute disableApiTermination --value false  > "${TMP}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination.json" 2>"${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination.log"
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 terminate-instances --instance-id ${AWS_INSTANCE_ID} >> "${TMP}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination.json" 2>>"${LOG}/${AWS_INSTANCES_DETAILS}_${AWS_INSTANCE_ID}_termination.log"
   ERROR_CODE="$?"
   if [ ${ERROR_CODE} -eq 0 ]
   then

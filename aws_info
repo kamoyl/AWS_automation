@@ -579,7 +579,8 @@ inf ""
 inf "${MAGENTA}EC2 AMIs"
 if [ -s "${TMP}/${AWS_AMIS_DETAILS}_full.json" ] && [ ! -z $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | head -n1) ]
 then
-  for AWS_AMI_IMAGE_ID in $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+  #for AWS_AMI_IMAGE_ID in $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+  for AWS_AMI_IMAGE_ID in $(jq -r '.Images[] | .ImageId + " " + .Name' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | grep "kpn_" | awk '{print $1}')
   do
     AWS_AMI_NAME=$(jq -r --arg image_id ${AWS_AMI_IMAGE_ID} '.Images[] | select(.ImageId == $image_id) | .Name' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
     AWS_AMI_SNAPSHOT=$(jq -r --arg image_id ${AWS_AMI_IMAGE_ID} '.Images[] | select(.ImageId == $image_id) | .BlockDeviceMappings[].Ebs.SnapshotId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
@@ -972,6 +973,7 @@ then
   else
     for AWS_LAMBDA_FUNCTION_NAME in $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} '.Functions[] | select(.FunctionName | startswith($aws_default_name) | not) | .FunctionName' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
     do
+      SECURITY_GROUP_ID=$(jq -r --arg security_group_name ${SECURITY_GROUP_LAMBDA_NAME} '.SecurityGroups[] | select(.GroupName == $security_group_name) | .GroupId' "${TMP}/${AWS_SECURITY_GROUPS}_full.json")
       (
         inf "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
         if [[ ! -z ${AMI_TOBE_REMOVED} ]] && [[ ${CLEANING} == yes ]]

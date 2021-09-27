@@ -18,11 +18,16 @@ then
   fi
 else
   export VAR=$(readlink -f ${o})
+  if [ -z ${VAR} ]
+  then
+    VAR=${o}
+  fi
   export TERADATA_VAR=${VAR}
   mkdir -p ${VAR} > /dev/null 2>&1
   if [ $? -ne 0 ]
   then
-    error "I have no permissions to create OUTPUT directory here"
+    error "I have no permissions to create OUTPUT directory here:"
+    debug "  var=${WARN}${VAR}"
     exit 1
   fi
 fi

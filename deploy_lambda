@@ -66,7 +66,8 @@ inf "    ${MAGENTA}Checking if ${YELLOW}${SECURITY_GROUP_LAMBDA_NAME}${MAGENTA} 
 for SOURCE_NETWORK in ${SOURCE_NETWORKS[*]}
 do
   (
-  SECURITY_GROUP_INGRESS_SOURCE_NETWORK=$(jq -r --arg source_network ${SOURCE_NETWORK} '.SecurityGroups[].IpPermissions[].IpRanges[] | select(.CidrIp | startswith($source_network)) | .CidrIp' "${TMP}/${AWS_SECURITY_GROUPS}_full.json")
+  SECURITY_GROUP_INGRESS_SOURCE_NETWORK=$(jq -r --arg source_network ${SOURCE_NETWORK} '.SecurityGroups[].IpPermissions[].IpRanges[] | select(.CidrIp | startswith($source_network)) | .CidrIp' "${TMP}/${AWS_SECURITY_GROUPS}_full.json" | sort -u)
+  echo "SECURITY_GROUP_INGRESS_SOURCE_NETWORK=${SECURITY_GROUP_INGRESS_SOURCE_NETWORK}"
   if [ -z ${SECURITY_GROUP_INGRESS_SOURCE_NETWORK} ]
   then
     aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${SOURCE_NETWORK}"

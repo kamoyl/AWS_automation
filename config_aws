@@ -24,8 +24,8 @@ fi
 
 #nslookup hooks.slack.com | grep -A1 "hooks.slack.com" | grep "Address:" | awk -F\: '{print $2}' | sed 's/^[[:space:]]*//g;s/[[:space:]]*$//g'
 
-
 AWS_EGRESS_LIST=(0.0.0.0/0:22:tcp 0.0.0.0/0:25:tcp 0.0.0.0/0:37:tcp 0.0.0.0/0:53:tcp 0.0.0.0/0:53:udp 0.0.0.0/0:80:tcp 0.0.0.0/0:110:tcp 0.0.0.0/0:123:tcp 0.0.0.0/0:143:tcp 0.0.0.0/0:443:tcp 0.0.0.0/0:465:tcp 0.0.0.0/0:587:tcp 0.0.0.0/0:636:tcp 0.0.0.0/0:993:tcp 0.0.0.0/0:995:tcp 0.0.0.0/0:1025:tcp 0.0.0.0/0:7999:tcp)
+PYTHON_MODULES=(Crypto StringIO binascii colorama coloredlogs config csv datetime getopt glob gzip heartrate important io joblib json loguru netaddr numpy pandas shutil smtplib snoop socket subprocess sys teradatasql termcolor threading time traceback urllib3 xlsxwriter)
 
 if [ -z ${USER} ]
 then
@@ -43,7 +43,9 @@ then
   export YOUR_IP="${DEFAULT_INET_IP}"
   AWS_IP="${YOUR_IP}"
   PROXYS=""
-  LOCAL_EC2_INSTANCE=$(cat /sys/devices/virtual/dmi/id/board_asset_tag)
+  #LOCAL_EC2_INSTANCE=$(cat /sys/devices/virtual/dmi/id/board_asset_tag)
+  #LOCAL_EC2_INSTANCE=$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id)
+  LOCAL_EC2_INSTANCE=$(cat /var/lib/cloud/data/instance-id)
   debug "You are currently connected from ${BROWN}AWS: ${LIME}${YOUR_IP}${BLUE}, instanceID: ${YELLOW}${LOCAL_EC2_INSTANCE}"
 else
   AWS_ZONE="N"
@@ -89,7 +91,7 @@ AWS_POLICY_VERSION="2012-10-17"
 AWS_ROLES="aws_roles_${CURRENT_TIMESTAMP}"
 AWS_ROUTE_TBLS="aws_route_tables_${CURRENT_TIMESTAMP}"
 AWS_S3BUCKETS_DETAILS="aws_S3_bucks_${CURRENT_TIMESTAMP}"
-AWS_S3_BUCKETS=(${AWS_COMMON_NAME}-reports ${AWS_COMMON_NAME}-housekeeping ${AWS_COMMON_NAME}-securitymatrix ${AWS_COMMON_NAME}-trails)
+AWS_S3_BUCKETS=(${AWS_COMMON_NAME}-reports ${AWS_COMMON_NAME}-housekeeping ${AWS_COMMON_NAME}-securitymatrix ${AWS_COMMON_NAME}-trails ${AWS_COMMON_NAME}-lambda)
 AWS_SECURITY_GROUPS="aws_security-groups_${CURRENT_TIMESTAMP}"
 AWS_SNAPS_DETAILS="aws_S3_snaps_${CURRENT_TIMESTAMP}"
 AWS_SUBNETS_DETAILS="aws_subnets_${CURRENT_TIMESTAMP}"
@@ -652,6 +654,7 @@ aws_instance_create()
   AWS_INSTANCE_DETAILS_PUBLIC_IP=$(jq -r '.Instances[].PublicIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
   AWS_INSTANCE_DETAILS_IP=$(jq -r '.Instances[].PrivateIpAddress' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
   AWS_INSTANCE_DETAILS_ID=$(jq -r '.Instances[].InstanceId' "${TMP}/${AWS_INSTANCES_DETAILS}_run_full.json")
+  aws ${AWS_PROFILE_USE_CHECK[*]} ec2 create-tags --resources ${AWS_INSTANCE_DETAILS_ID} --tags Key=TeradataTeam,Value=TDDeployedForTesting
   aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-instances > "${TMP}/${AWS_INSTANCES_DETAILS}_full.json" 2>"${LOG}/${AWS_INSTANCES_DETAILS}.log"
 }
 
@@ -1867,47 +1870,42 @@ if [ $# -ne 1 ]
 
 aws_security_group_egress_add()
 {
-  if [ $# -ne 1 ]
+  if [ $# -ne 2 ]
   then
-    error "Function ${LIME}${FUNCNAME[0]}${RED} needs one parameter: ${YELLOW}(1)security_group_Id"
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs two parameters: ${YELLOW}(1)security_group_Id, (2)egress_entry"
     ERROR_CODE="1"
     failed
   else
     SECURITY_GROUP_ID="${1}"
+    EGRESS_ENTRY="${2}"
   fi
   aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups --group-ids ${SECURITY_GROUP_ID} > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.log"
   CURRENT_IFS=${IFS}
   IFS=${ORIGIFS}
-  for EGRESS_ENTRY in ${AWS_EGRESS_LIST[*]}
+  EGRESS_CIDR=$(echo ${EGRESS_ENTRY} | awk -F\: '{print $1}')
+  for PORT in $(echo ${EGRESS_ENTRY} | awk -F\: '{print $2}' | sed 's/,/ /g')
   do
-    #(
-      EGRESS_CIDR=$(echo ${EGRESS_ENTRY} | awk -F\: '{print $1}')
-      for PORT in $(echo ${EGRESS_ENTRY} | awk -F\: '{print $2}' | sed 's/,/ /g')
-      do
-        for EGRESS_PROTOCOL in $(echo ${EGRESS_ENTRY} | awk -F\: '{print $3}' | sed 's/,/ /g')
-        do
-          if [ -z $(jq -r --arg port ${PORT} '.SecurityGroups[].IpPermissionsEgress[] | select(.FromPort | tostring | contains($port))' "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.json" | jq -r --arg cidr ${EGRESS_CIDR} 'select(.IpRanges[].CidrIp == $cidr)'  | jq -r --arg protocol ${EGRESS_PROTOCOL} 'select(.IpProtocol == $protocol)' | head -n1) ]
-          then
-            inf "      Adding destination socket: ${LIME}${EGRESS_CIDR}:${PORT}${CYAN}, protocol: ${BROWN}${EGRESS_PROTOCOL}${CYAN} to ${YELLOW}${SECURITY_GROUP_ID}"
-            aws ${AWS_PROFILE_USE_CHECK[*]} ec2 authorize-security-group-egress --group-id ${SECURITY_GROUP_ID} --protocol ${EGRESS_PROTOCOL} --port ${PORT} --cidr ${EGRESS_CIDR} >> "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_egress.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_egress.log"
-          ERROR_CODE="$?"
-          if [ ${ERROR_CODE} -eq 0 ]
-          then
-            inf "        Adding destination address(s): ${LIME}${EGRESS_CIDR}:${PORT}${CYAN} succedeed"
-            aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups --group-ids ${SECURITY_GROUP_ID} > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.log"
-          else
-            error "        Adding destination address(s): ${LIME}${EGRESS_CIDR}:${PORT}${RED} failed, exiting"
-            debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.log"
-            failed
-          fi
+    for EGRESS_PROTOCOL in $(echo ${EGRESS_ENTRY} | awk -F\: '{print $3}' | sed 's/,/ /g')
+    do
+      if [ -z $(jq -r --arg port ${PORT} '.SecurityGroups[].IpPermissionsEgress[] | select(.FromPort | tostring | contains($port))' "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.json" | jq -r --arg cidr ${EGRESS_CIDR} 'select(.IpRanges[].CidrIp == $cidr)'  | jq -r --arg protocol ${EGRESS_PROTOCOL} 'select(.IpProtocol == $protocol)' | head -n1) ]
+      then
+        inf "      Adding destination socket: ${LIME}${EGRESS_CIDR}:${PORT}${CYAN}, protocol: ${BROWN}${EGRESS_PROTOCOL}${CYAN} to ${YELLOW}${SECURITY_GROUP_ID}"
+        aws ${AWS_PROFILE_USE_CHECK[*]} ec2 authorize-security-group-egress --group-id ${SECURITY_GROUP_ID} --protocol ${EGRESS_PROTOCOL} --port ${PORT} --cidr ${EGRESS_CIDR} >> "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_egress.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_egress.log"
+        ERROR_CODE="$?"
+        if [ ${ERROR_CODE} -eq 0 ]
+        then
+          inf "        Adding destination address(s): ${LIME}${EGRESS_CIDR}:${PORT}${CYAN} succedeed"
+          aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups --group-ids ${SECURITY_GROUP_ID} > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.json" 2>"${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.log"
         else
-          warn "      Socket: ${LIME}${EGRESS_CIDR}${WINE}:${GREEN}${PORT}${WINE}, protocol: ${BROWN}${EGRESS_PROTOCOL}${WINE} has already been added to security group: ${YELLOW}${SECURITY_GROUP_ID}"
+          error "        Adding destination address(s): ${LIME}${EGRESS_CIDR}:${PORT}${RED} failed, exiting"
+          debug "          LOG FILE: ${YELLOW}${LOG}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.log"
+          failed
         fi
-      done
+      else
+        warn "      Socket: ${LIME}${EGRESS_CIDR}${WINE}:${GREEN}${PORT}${WINE}, protocol: ${BROWN}${EGRESS_PROTOCOL}${WINE} has already been added to security group: ${YELLOW}${SECURITY_GROUP_ID}"
+      fi
     done
-    #) &
   done
-  wait
   IFS=${CURRENT_IFS}
 }
 

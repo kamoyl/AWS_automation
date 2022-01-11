@@ -100,15 +100,12 @@ then
           do
             for EVENT_TARGET_ID in $(jq -r --arg event_target_arn ${EVENT_TARGET_ARN} '.Targets[] | select(.Arn == $event_target_arn) | .Id' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json")
             do
+              (
               EVENT_TARGET_NAME=$(echo ${EVENT_TARGET_ARN} | awk -F\: '{print $NF}')
               EVENT_EVENT_NAME=$(echo ${EVENT_RULE} | sed 's/_rule/_event/g')
               aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-function --function-name ${EVENT_TARGET_NAME} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_TARGET_NAME}_definition_full.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_TARGET_NAME}_definition.log"
-              if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_TARGET_NAME}_definition_full.json" ]
-              then
-                lambda_add_permission_to_trust_principal ${EVENT_TARGET_NAME} ${EVENT_EVENT_NAME} events.amazonaws.com ${EVENT_RULE} > "${LOG}/${AWS_EVENTS_RULES}_permissions_adding.log" 2>&1
-              else
-                aws ${AWS_PROFILE_USE_CHECK[*]} events remove-targets --rule ${EVENT_RULE_NAME} --ids ${EVENT_TARGET_ID} > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_TARGET_ID}_removal.json" 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_TARGET_ID}_removal.log"
-              fi
+              aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-policy --function-name ${EVENT_TARGET_NAME} --output text 2> "${LOG}/${AWS_EVENTS_RULES}_${EVENT_EVENT_NAME}_trust.log" | jq -r > "${TMP}/${EVENT_TARGET_NAME}_${EVENT_EVENT_NAME}_trust.json" 2> "${LOG}/${EVENT_TARGET_NAME}_${EVENT_EVENT_NAME}_trust.log"
+              ) &
             done
           done
         fi

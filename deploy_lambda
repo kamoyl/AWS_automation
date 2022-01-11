@@ -103,6 +103,56 @@ then
 fi
 
 IFS=${NEWIFS}
+if [ -s "${TMP}/${AWS_EVENTS_BUSES}_full.json" ]
+then
+  for EVENT_BUS in $(jq -r '.EventBuses[].Name' "${TMP}/${AWS_EVENTS_BUSES}_full.json")
+  do
+    EVENT_BUS_NAME=${EVENT_BUS}
+    EVENT_BUS_ARN="$(jq -r --arg event_bus_name ${EVENT_BUS_NAME} '.EventBuses[] | select(.Name == $event_bus_name) | .Arn' "${TMP}/${AWS_EVENTS_BUSES}_full.json")"
+    inf "  Event bus: ${DARK_GREEN}${EVENT_BUS_NAME}"
+    if [ -s "${TMP}/${AWS_EVENTS_RULES}_full.json" ] && [ ! -z $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | contains($aws_default_name) | not) | select(.EventBusName == $event_bus_name) | select(.ManagedBy == "schemas.amazonaws.com" | not) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json" | head -n1) ]
+    then
+      for EVENT_RULE in $(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg event_bus_name ${EVENT_BUS_NAME} '.Rules[] | select(.Name | contains($aws_default_name) | not) | select(.EventBusName == $event_bus_name) | select(.ManagedBy == "schemas.amazonaws.com" | not) | .Name' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+      do
+        EVENT_RULE_NAME=${EVENT_RULE}
+        EVENT_RULE_BUS=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .EventBusName' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        EVENT_RULE_SCHEDULE=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .ScheduleExpression' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        EVENT_RULE_ARN=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        EVENT_RULE_STATE=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .State' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        EVENT_RULE_DESCRIPTION=$(jq -r --arg event_rule_name ${EVENT_RULE_NAME} '.Rules[] | select(.Name == $event_rule_name) | .Description' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+        if [[ ${VERBOSE} == yes ]]
+        then
+          debug "    Event rule: ${LIME}${EVENT_RULE_NAME}${CYAN}, of this bus: ${DARK_GREEN}${EVENT_BUS_NAME}${CYAN}, scheduled on: ${BROWN}\"${EVENT_RULE_SCHEDULE}\""
+        fi
+        if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" ] && [ ! -z $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" | head -n1) ]
+        then
+          for EVENT_TARGET_ARN in $(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json" | sort -u)
+          do
+            (
+            for EVENT_TARGET_ID in $(jq -r --arg event_target_arn ${EVENT_TARGET_ARN} '.Targets[] | select(.Arn == $event_target_arn) | .Id' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_RULE}_targets_full.json")
+            do
+              if [[ ${VERBOSE} == yes ]]
+              then
+                debug "      to target Arn: ${GREEN}${EVENT_TARGET_ARN}" 
+              fi
+            done
+            ) &
+          done
+          wait
+        else
+          warn "      There is no EventTargets related to rule: ${LIME}${EVENT_RULE_NAME}"
+          event_bridge_remove_rule ${EVENT_RULE_NAME}
+        fi
+      done
+    else
+      warn "    There is no ${AWS_COMMON_NAME} EventRules related to the bus: ${DARK_GREEN}${EVENT_BUS_NAME}"
+    fi
+  done
+else
+  warn "  There is no ${AWS_COMMON_NAME} Event Buses yet"
+fi
+wait
+
 for LAMBDA_SCRIPT_LINE in $(cat "${SCRIPTS_HOME}/lambda_functions/lambda_events.config" | grep -v "^#")
 do
   LAMBDA_SCRIPT=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $1}')
@@ -123,15 +173,15 @@ do
   export SUBNET_ID
   export REGION
   export SECURITY_GROUP_ID
-  inf "${MAGENTA}Checking if Lambda function (${BLUE}${AWS_LAMBDA_NAME}${MAGENTA}) exists"
+  inf "${MAGENTA}Checking if Lambda function (${YELLOW}${AWS_LAMBDA_NAME}${MAGENTA}) exists"
   lambda_function_deployment ${AWS_LAMBDA_NAME} ${AWS_HANDLER_FUNCTION_NAME}
   EVENT_TARGET_ID="Id=${RANDOM_ID_GEN},Arn=${EC2_LAMBDA_SCRIPT_ARN}"
-  
   EVENT_SCHEDULE=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $3}')
   if [ -z ${EVENT_SCHEDULE} ]
   then
     warn "    Lambda function: ${YELLOW}${AWS_LAMBDA_NAME}${WINE} is configured without schedule"
   else
+    #only about naming convention
     if [[ ${EVENT_SCHEDULE} =~ ^cron.* ]]
     then
       SCHEDULE_DAY_OF_WEEK=$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print $5}')
@@ -140,80 +190,64 @@ do
       then
         if [[ ${SCHEDULE_DAY_OF_MONTH} == "?" ]] || [[ ${SCHEDULE_DAY_OF_MONTH} == "*" ]]
         then
-          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1}' | sed 's/,/-/g')_lambda_rule"
-          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1}' | sed 's/,/-/g')_lambda_event"
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1}' | sed 's/,/-/g')_lambda_rule_${RANDOM_ID_GEN}"
         else
-          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_MONTH_"$3}' | sed 's/,/-/g')_lambda_rule"
-          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_MONTH_"$3}' | sed 's/,/-/g')_lambda_event"
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_MONTH_"$3}' | sed 's/,/-/g')_lambda_rule_${RANDOM_ID_GEN}"
         fi
       else
         if [[ ${SCHEDULE_DAY_OF_MONTH} == "?" ]] || [[ ${SCHEDULE_DAY_OF_MONTH} == "*" ]]
         then
-          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}' | sed 's/,/-/g')_lambda_rule"
-          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}' | sed 's/,/-/g')_lambda_event"
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5}' | sed 's/,/-/g')_lambda_rule_${RANDOM_ID_GEN}"
         else
-          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5"_MONTH_"$3}' | sed 's/,/-/g')_lambda_rule"
-          EVENT_BRIDGE_EVENT_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5"_MONTH_"$3}' | sed 's/,/-/g')_lambda_event"
+          EVENT_BRIDGE_RULE_NAME="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print "HOUR_"$2"_MIN_"$1"_DAY_"$5"_MONTH_"$3}' | sed 's/,/-/g')_lambda_rule_${RANDOM_ID_GEN}"
         fi
       fi
+      EVENT_BRIDGE_EVENT_NAME=$(echo ${EVENT_BRIDGE_RULE_NAME} | sed 's/_rule/_event/g')
     elif [[ ${EVENT_SCHEDULE} =~ ^rate.* ]]
     then
       EVENT_SCHEDULE_RATE="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print $1}')"
       EVENT_SCHEDULE_RANGE="$(echo ${EVENT_SCHEDULE} | awk -F\( '{print $2}' | awk '{print $2}' | awk -F\) '{print $1}')"
-      EVENT_BRIDGE_RULE_NAME="every${EVENT_SCHEDULE_RATE}${EVENT_SCHEDULE_RANGE}_lambda_rule"
+      EVENT_BRIDGE_RULE_NAME="every${EVENT_SCHEDULE_RATE}${EVENT_SCHEDULE_RANGE}_lambda_rule_${RANDOM_ID_GEN}"
       EVENT_BRIDGE_EVENT_NAME=$(echo ${EVENT_BRIDGE_RULE_NAME} | sed 's/_rule/_event/g')
     fi
-    if compgen -G "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json >/dev/null
+    #only about naming convention end
+    #actual checking, creating rules, and adding target to rules, and if needed, cleaning if attached to more then one rule
+    if grep -q ${AWS_LAMBDA_NAME} "${TMP}/${AWS_EVENTS_RULES}_"*_targets_full.json
     then
-      if grep -q "${EC2_LAMBDA_SCRIPT_ARN}" "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json 2>/dev/null
-      then
-        inf "    ${WINE}Target: ${GREEN}${EC2_LAMBDA_SCRIPT_ARN}${WINE} is already added to rule:"
-        for TARGET_IN_RULE in $(grep -l "${EC2_LAMBDA_SCRIPT_ARN}" "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}"*_targets_full.json | awk -F\/ '{print $NF}' | sed "s/${AWS_EVENTS_RULES}_//g;s/_targets_full.json//g")
+      SID_FROM_EVENT=""
+      lambda_get_policy ${AWS_LAMBDA_NAME}
+      for TARGET_ALREADY_ADDED_TO_RULE_JSON in $(grep -l ${AWS_LAMBDA_NAME} "${TMP}/${AWS_EVENTS_RULES}_"*_targets_full.json)
+      do
+        for EXISTING_RULE_NAME in $(echo ${TARGET_ALREADY_ADDED_TO_RULE_JSON} | awk -F\/ '{print $NF}' | sed 's/_targets_full.json//g' | awk -F\. '{print $NF}' | sed "s/^.._//g")
         do
-          inf "      ${BLUE}${TARGET_IN_RULE}"
-          lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
+          for RULE_FILE in $(ls "${TMP}/aws_events-rules_${CURRENT_TIMESTAMP}_${EXISTING_RULE_NAME}_targets_full.json")
+          do
+            TARGET_ARN_CHECK=$(cat "${TMP}/aws_events-rules_${CURRENT_TIMESTAMP}_${EXISTING_RULE_NAME}_targets_full.json" | jq -r --arg aws_lambda_name ${AWS_LAMBDA_NAME} '.Targets[] | select(.Arn | contains($aws_lambda_name))' | jq -r '.Arn')
+            TARGET_ID_CHECK=$(cat "${TMP}/aws_events-rules_${CURRENT_TIMESTAMP}_${EXISTING_RULE_NAME}_targets_full.json" | jq -r --arg aws_lambda_name ${AWS_LAMBDA_NAME} '.Targets[] | select(.Arn | contains($aws_lambda_name))' | jq -r '.Id')
+          done
         done
-      else
-        if [ -s "${TMP}/${AWS_EVENTS_RULES}_target_amount.csv" ]
+      done
+    else
+      error "    This lambda: ${YELLOW}${AWS_LAMBDA_NAME}${RED} belongs to no event rule yet... (in fact as a target)"
+      if [[ ${VERBOSE} == yes ]]
+      then
+        debug "      new name: EVENT_BRIDGE_RULE_NAME=${EVENT_BRIDGE_RULE_NAME}"
+        debug "      new name: EVENT_BRIDGE_EVENT_NAME=${EVENT_BRIDGE_EVENT_NAME}"
+        debug "      EVENT_SCHEDULE=${EVENT_SCHEDULE}"
+        debug "      EVENT_TARGET_ID=${EVENT_TARGET_ID}"
+      fi
+      SID_FROM_EVENT=""
+      lambda_get_policy ${AWS_LAMBDA_NAME}
+      if [ ! -z ${SID_FROM_EVENT} ]
+      then
+        if [[ ${SID_FROM_EVENT} != ${EVENT_BRIDGE_EVENT_NAME} ]]
         then
-          FIRST_LINE_WITH_RULE_READY_FOR_TARGET=$(awk -F\~ '{if($2<5)print $0}' "${TMP}/${AWS_EVENTS_RULES}_target_amount.csv" | grep "^${EVENT_BRIDGE_RULE_NAME}" | head -n1 | awk -F\~ '{print $1}')
-          if [ -z ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET} ]
-          then
-            EVENT_BRIDGE_RULE_NAME_OLD=${EVENT_BRIDGE_RULE_NAME}
-            EVENT_BRIDGE_RULE_NAME_NEW=${EVENT_BRIDGE_RULE_NAME}_${RANDOM_ID_GEN}
-            EVENT_BRIDGE_RULE_NAME=${EVENT_BRIDGE_RULE_NAME_NEW}
-            EVENT_BRIDGE_EVENT_NAME_NEW=$(echo ${EVENT_BRIDGE_RULE_NAME} | sed 's/_rule/_event/g')
-            EVENT_BRIDGE_EVENT_NAME=${EVENT_BRIDGE_EVENT_NAME_NEW}
-            warn "    Target: ${GREEN}${EC2_LAMBDA_SCRIPT_ARN}${CYAN} cannot be added to rule: ${LIME}${EVENT_BRIDGE_RULE_NAME_OLD}${WINE} due to quota"
-            events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
-            events_list_of_rules
-            lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
-            events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
-            events_list_of_all_targets
-            wait
-          else
-            #echo "target: ${EC2_LAMBDA_SCRIPT_ARN} will be added to rule: ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}"
-            EVENT_BRIDGE_EVENT_NAME_NEW=$(echo ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET} | sed 's/_rule/_event/g')_${RANDOM_ID_GEN}
-            EVENT_BRIDGE_EVENT_NAME=${EVENT_BRIDGE_EVENT_NAME_NEW}
-            lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}
-            events_add_target_to_rule ${EVENT_TARGET_ID} ${FIRST_LINE_WITH_RULE_READY_FOR_TARGET}
-            events_list_of_all_targets
-            wait
-          fi
+          inf "        Something went wrong if there is no rule, but proper event bridge name (${EVENT_BRIDGE_RULE_NAME} already existed...)"
         else
-          events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
-          events_list_of_rules
-          lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
-          events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
-          events_list_of_all_targets
+          warn "        There is an old rule with different event name (generated ${DARK_GREEN}${EVENT_BRIDGE_EVENT_NAME}${WINE}, found from old trust: ${DARK_GREEN}${SID_FROM_EVENT}${WINE})"
+          lambda_delete_permission ${AWS_LAMBDA_NAME} ${SID_FROM_EVENT}
         fi
       fi
-    else
-      events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
-      events_list_of_rules
-      lambda_add_permission_to_trust_principal ${AWS_LAMBDA_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
-      events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
-      events_list_of_all_targets
     fi
   fi
   if [[ ${RUN_SCRIPT} == yes ]]

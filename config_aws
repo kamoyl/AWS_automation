@@ -135,9 +135,11 @@ log_tmp_maintenance()
         warn "    ${BROWN}${BACKUP_OUTPUT_FILE}${WINE} - AWS S3 bucket is not provided, so default one is choosen: ${YELLOW}${S3_BUCKET_NAME}"
         inf "    Copying ${BROWN}${BACKUP_OUTPUT_FILE}${CYAN} to AWS S3 bucket: ${YELLOW}${S3_BUCKET_NAME}"
         aws ${AWS_PROFILE_USE_CHECK[*]} s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > "${VAR}/S3_copying_log_tmp.log" 2>&1
+        #aws ${AWS_PROFILE_USE_CHECK[*]} s3 presign "s3://${S3_BUCKET_NAME}/${BACKUP_OUTPUT_FILE}" --expires-in ...
       else
         inf "    Copying ${BROWN}${BACKUP_OUTPUT_FILE}${CYAN} to AWS S3 bucket: ${YELLOW}${S3_BUCKET_NAME}"
         aws ${AWS_PROFILE_USE_CHECK[*]} s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > "${VAR}/S3_copying_log_tmp.log" 2>&1
+        #aws ${AWS_PROFILE_USE_CHECK[*]} s3 presign "s3://${S3_BUCKET_NAME}/${BACKUP_OUTPUT_FILE}" --expires-in ...
       fi
     fi
   else
@@ -980,7 +982,7 @@ lambda_function_deployment()
   LAMBDA_FUNCTION_ARN=$(jq -r --arg aws_default_name ${AWS_DEFAULT_NAME} --arg ec2_lambda_function ${AWS_LAMBDA_FUNCTION_NAME} '.Functions[] | select(.FunctionName | startswith($aws_default_name) | not) | select(.FunctionName == $ec2_lambda_function) | .FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
   if [ ! -z ${LAMBDA_FUNCTION_ARN} ]
   then
-    warn "  Lambda function: ${BLUE}${AWS_LAMBDA_FUNCTION_NAME}${WINE} already exists"
+    warn "  Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${WINE} already exists"
     EC2_LAMBDA_SCRIPT_ARN=$(jq -r --arg aws_lambda_function_name ${AWS_LAMBDA_FUNCTION_NAME} '.Functions[] | select(.FunctionName == $aws_lambda_function_name) | .FunctionArn' "${TMP}/${AWS_LAMBDA_FUNCTIONS}_full.json")
   else
     inf "Preparing Lambda function: ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
@@ -1934,9 +1936,9 @@ aws_security_group_ingress_add()
       inf "        Adding source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${CYAN} succedeed"
       aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-security-groups --group-ids ${SECURITY_GROUP_ID} > "${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_full.json" 2>&1
     else
-      error "        Adding source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${RED} failed, exiting"
+      error "        Adding source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${RED} failed..."
       debug "          LOG FILE: ${YELLOW}${TMP}/${AWS_SECURITY_GROUPS}_${SECURITY_GROUP_ID}_ingress.json"
-      failed
+      #failed
     fi
   else
     warn "      Source address(s): ${LIME}${INGRESS_CIDR_ADDRESS}${WINE} has already been added to security group: ${YELLOW}${SECURITY_GROUP_ID}"
@@ -2024,7 +2026,7 @@ events_create_cron_rule()
     EVENT_BRIDGE_TARGET_AMOUNT=$(jq -r '.Targets[].Arn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_targets_full.json" | wc -l)
     if [ ${EVENT_BRIDGE_TARGET_AMOUNT} -ge 5 ]
     then
-      warn "    Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${WINE} has already full with targets (${RED}5${WINE})"
+      warn "    Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${WINE} has already full of targets (${RED}5${WINE})"
     else
       inf "    ${WINE}Event rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}${WINE} already exists (targets: ${GREEN}${EVENT_BRIDGE_TARGET_AMOUNT}${CYAN})"
     fi
@@ -2062,6 +2064,95 @@ events_list_of_all_targets()
 
 #aws ${AWS_PROFILE_USE_CHECK[*]} events create-event-bus --name ${AWS_COMMON_NAME}-EC2_scripts_deployment_bus > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_BUS}_full.json" 2>&1
 
+lambda_get_policy()
+{
+  if [ $# -ne 1 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs four parameters: ${YELLOW}(1)lambda_function_name"
+    ERROR_CODE="1"
+    failed
+  else
+    AWS_LAMBDA_FUNCTION_NAME=${1}
+    PERMISSIONS_ACTION="lambda:InvokeFunction"
+  fi
+  aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-policy --function-name ${AWS_LAMBDA_FUNCTION_NAME} --output text 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust.log" | jq -r > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json" 2>>"${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
+  if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json" ]
+  then
+    LAMBDA_FUNCTION_ARN_FROM_EVENT=$(jq -r '.Statement[].Resource' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
+    for SID_FROM_EVENT in $(jq -r '.Statement[].Sid' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
+    do
+      EVENT_EFFECT=$(jq -r --arg sid_from_event ${SID_FROM_EVENT} '.Statement[] | select(.Sid == $sid_from_event) | .Effect' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
+      EVENT_BRIDGE_RULE_ARN=$(jq -r --arg sid_from_event ${SID_FROM_EVENT} '.Statement[] | select(.Sid == $sid_from_event) | .Condition.ArnLike."AWS:SourceArn"' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
+      EVENT_BRIDGE_RULE_COLLECTED=$(echo ${EVENT_BRIDGE_RULE_ARN} | awk -F\/ '{print $2}')
+      PERMISSION_EVENTBRIDGE_LAMBDA=$(jq -r --arg sid_from_event ${SID_FROM_EVENT} '.Statement[] | select(.Sid == $sid_from_event) | .Action' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
+      if [[ ${VERBOSE} == yes ]]
+      then
+        debug "    Lambda ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}${BLUE} policy ${WINE}${EVENT_EFFECT}"
+        debug "      an event: ${DARK_GREEN}${SID_FROM_EVENT}" 
+        debug "        which belongs to a rule (match event, and route it to target - lambda): ${LIME}${EVENT_BRIDGE_RULE_COLLECTED}"
+        debug "          calls lambda (target): ${YELLOW}${AWS_LAMBDA_FUNCTION_NAME}"
+        debug "            (principal: ${PERMISSION_EVENTBRIDGE_LAMBDA})"
+      fi
+      if cat "${TMP}/${AWS_EVENTS_RULES}_full.json" | jq -r '.Rules[].Name' | grep -wq ${EVENT_BRIDGE_RULE_COLLECTED}
+      then
+        if [[ ${PERMISSIONS_ACTION} == ${PERMISSION_EVENTBRIDGE_LAMBDA} ]]
+        then
+          inf "    Appropriate permissions and trust to an event: ${DARK_GREEN}${SID_FROM_EVENT}${CYAN} are set properly already"
+          if [[ ${VERBOSE} == yes ]]
+          then
+            debug "                ${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json"
+          fi
+        else
+          error "              Trust has been set but with different permissions ... it might not work finally"
+          if [[ ${VERBOSE} == yes ]]
+          then
+            debug "                (it should be: PERMISSIONS_ACTION=${PERMISSIONS_ACTION} and it is: PERMISSION_EVENTBRIDGE_LAMBDA=${PERMISSION_EVENTBRIDGE_LAMBDA})"
+            debug "                  ${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json"
+          fi
+        fi
+      else
+        error "      Such event rule: ${DARK_GREEN}${EVENT_BRIDGE_RULE_COLLECTED}${RED} doesn't exist, trust MUST be removed"
+        lambda_delete_permission ${AWS_LAMBDA_FUNCTION_NAME} ${SID_FROM_EVENT}
+      fi
+    done
+  else
+    error "      Appropriate permissions and trust to: ${DARK_GREEN}${EVENT_BRIDGE_EVENT_NAME}${RED} are NOT set"
+    if [ ! -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json" ]
+    then
+      events_create_cron_rule ${EVENT_BRIDGE_RULE_NAME} "${EVENT_SCHEDULE}"
+      events_list_of_rules
+    fi
+    lambda_add_permission_to_trust_principal ${AWS_LAMBDA_FUNCTION_NAME} ${EVENT_BRIDGE_EVENT_NAME} events.amazonaws.com ${EVENT_BRIDGE_RULE_NAME}
+    if [ ! -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_target${RANDOM_ID_GEN}_full.json" ]
+    then
+      events_add_target_to_rule ${EVENT_TARGET_ID} ${EVENT_BRIDGE_RULE_NAME}
+      events_list_of_all_targets
+    fi
+  fi
+}
+
+lambda_delete_permission()
+{
+  if [ $# -ne 2 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs four parameters: ${YELLOW}(1)lambda_function_name, (2)event Sid"
+    ERROR_CODE="1"
+    failed
+  else
+    AWS_LAMBDA_FUNCTION_NAME=${1}
+    EVENT_SID=${2}
+  fi
+  aws ${AWS_PROFILE_USE_CHECK[*]} lambda remove-permission --function-name ${AWS_LAMBDA_FUNCTION_NAME} --statement-id ${EVENT_SID} > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_SID}_permissions_removal.json" 2> "${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_SID}_permissions_removal.log"
+  ERROR_CODE=$?
+  if [ ${ERROR_CODE} -eq 0 ]
+  then
+    inf "        None-used permissions have just beed removed properly"
+  else
+    error "        None-used permissions couldn't be removed"
+    debug "          LOGFILE=${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_SID}_permissions_removal.log"
+  fi
+}
+
 lambda_add_permission_to_trust_principal()
 {
   if [ $# -ne 4 ]
@@ -2076,42 +2167,25 @@ lambda_add_permission_to_trust_principal()
     EVENT_BRIDGE_RULE_NAME=${4}
     PERMISSIONS_ACTION="lambda:InvokeFunction"
   fi
-  aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-policy --function-name ${AWS_LAMBDA_FUNCTION_NAME} --output text 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust.log" | jq -r > "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json" 2>>"${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
-  if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json" ]
+  inf "        Adding trust ${DARK_GREEN}${SERVICE_PRINCIPAL}${CYAN} and scope permissions to the rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
+  if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json" ]
   then
-    LAMBDA_FUNCTION_ARN_FROM_EVENT=$(jq -r '.Statement[].Resource' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
-    SID_FROM_EVENT=$(jq -r '.Statement[].Sid' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
-    EVENT_BRIDGE_RULE_ARN=$(jq -r '.Statement[].Condition.ArnLike."AWS:SourceArn"' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
-    PERMISSION_EVENTBRIDGE_LAMBDA=$(jq -r '.Statement[].Action' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust_full.json")
-    if [[ ${PERMISSIONS_ACTION} == ${PERMISSION_EVENTBRIDGE_LAMBDA} ]]
-    then
-      if [[ ${VERBOSE} == yes ]]
-      then
-        debug "        Appropriate permissions and trust to: ${DARK_GREEN}${SID_FROM_EVENT}${BLUE} are set properly already"
-      fi
-    else
-      warn "        ${RED}Trust has been set but with different permissions... it might not work finally"
-    fi
+    EVENT_BRIDGE_RULE_ARN=$(jq -r '.RuleArn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json")
+  elif [ -s "${TMP}/${AWS_EVENTS_RULES}_full.json" ]
+  then
+    EVENT_BRIDGE_RULE_ARN=$(jq -r --arg event_bridge_rule_name ${EVENT_BRIDGE_RULE_NAME} '.Rules[] | select(.Name == $event_bridge_rule_name) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_full.json")
+  fi
+  aws ${AWS_PROFILE_USE_CHECK[*]} lambda add-permission --function-name ${AWS_LAMBDA_FUNCTION_NAME} --statement-id ${EVENT_BRIDGE_EVENT_NAME} --action "${PERMISSIONS_ACTION}" --principal ${SERVICE_PRINCIPAL} --source-arn ${EVENT_BRIDGE_RULE_ARN} > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.json" 2> "${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
+  ERROR_CODE="$?"
+  if [ ${ERROR_CODE} -eq 0 ]
+  then
+    inf "          Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trusts ${DARK_GREEN}${SERVICE_PRINCIPAL}"
+    aws ${AWS_PROFILE_USE_CHECK[*]} lambda get-policy --function-name ${AWS_LAMBDA_FUNCTION_NAME} --output text 2>"${LOG}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_EVENT_NAME}_trust.log" | jq -r > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.json" 2> "${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
   else
-    inf "        Adding trust ${DARK_GREEN}${SERVICE_PRINCIPAL}${CYAN} and scope permissions to the rule: ${LIME}${EVENT_BRIDGE_RULE_NAME}"
-    if [ -s "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json" ]
-    then
-      EVENT_BRIDGE_RULE_ARN=$(jq -r '.RuleArn' "${TMP}/${AWS_EVENTS_RULES}_${EVENT_BRIDGE_RULE_NAME}_full.json")
-    elif [ -s "${TMP}/${AWS_EVENTS_RULES}_full.json" ]
-    then
-      EVENT_BRIDGE_RULE_ARN=$(jq -r --arg event_bridge_rule_name ${EVENT_BRIDGE_RULE_NAME} '.Rules[] | select(.Name == $event_bridge_rule_name) | .Arn' "${TMP}/${AWS_EVENTS_RULES}_full.json")
-    fi
-    aws ${AWS_PROFILE_USE_CHECK[*]} lambda add-permission --function-name ${AWS_LAMBDA_FUNCTION_NAME} --statement-id ${EVENT_BRIDGE_EVENT_NAME} --action "${PERMISSIONS_ACTION}" --principal ${SERVICE_PRINCIPAL} --source-arn ${EVENT_BRIDGE_RULE_ARN} > "${TMP}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.json" 2> "${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
-    ERROR_CODE="$?"
-    if [ ${ERROR_CODE} -eq 0 ]
-    then
-      inf "          Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trusts ${DARK_GREEN}${SERVICE_PRINCIPAL}"
-    else
-      error "          Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trust cannot be set"
-      debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
-      error "              $(cat ${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log)"
-      failed
-    fi
+    error "          Event rule ${LIME}${EVENT_BRIDGE_RULE_NAME}${CYAN} trust cannot be set"
+    debug "            LOG FILE: ${YELLOW}${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log"
+    error "              $(cat ${LOG}/${AWS_LAMBDA_FUNCTION_NAME}_${EVENT_BRIDGE_EVENT_NAME}_trust.log)"
+    failed
   fi
 }
 

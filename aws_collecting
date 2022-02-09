@@ -45,6 +45,7 @@ wait
 events_list_of_rules
 events_list_of_all_targets
 wait
+aws_KMS_customer_key_create
 DEFAULT_VPC=$(jq -r '.Vpcs[].VpcId' "${TMP}/${AWS_VPCS}_full.json")
 
 #start separating data

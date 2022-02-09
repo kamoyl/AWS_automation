@@ -36,11 +36,11 @@ else
   inf "  Instance: ${YELLOW}${AWS_INSTANCE_DETAILS_ID}${CYAN} with private IP: ${LIME}${AWS_INSTANCE_DETAILS_IP}${CYAN} (public IP: ${GREEN}${AWS_INSTANCE_DETAILS_PUBLIC_IP}${CYAN}) has just been created"
 fi
 inf "    ${MAGENTA}Checking if ${YELLOW}${DEFAULT_INET_IP}${MAGENTA} may log in by ssh to instance: ${YELLOW}${AWS_INSTANCE_DETAILS_ID}"
-#SECURITY_GROUP_INGRESS_FOR_LOCAL_IP=$(jq -r --arg default_inet_ip ${DEFAULT_INET_IP} '.SecurityGroups[].IpPermissions[].IpRanges[] | select(.CidrIp | startswith($default_inet_ip)) | .CidrIp' "${TMP}/${AWS_SECURITY_GROUPS}_full.json")
-#if [ -z ${SECURITY_GROUP_INGRESS_FOR_LOCAL_IP} ]
-#then
-#  aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${DEFAULT_INET_IP}/32"
-#fi
+SECURITY_GROUP_INGRESS_FOR_LOCAL_IP=$(jq -r --arg default_inet_ip ${DEFAULT_INET_IP} '.SecurityGroups[].IpPermissions[].IpRanges[] | select(.CidrIp | startswith($default_inet_ip)) | .CidrIp' "${TMP}/${AWS_SECURITY_GROUPS}_full.json")
+if [ -z ${SECURITY_GROUP_INGRESS_FOR_LOCAL_IP} ]
+then
+  aws_security_group_ingress_add ${SECURITY_GROUP_ID} "${DEFAULT_INET_IP}/32"
+fi
 if [ ! -z ${EXTERNAL_INET_IP} ]
 then
   if [[ ${EXTERNAL_INET_IP} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]

@@ -155,6 +155,7 @@ wait
 
 for LAMBDA_SCRIPT_LINE in $(cat "${SCRIPTS_HOME}/lambda_functions/lambda_events.config" | grep -v "^#")
 do
+#  (
   LAMBDA_SCRIPT=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $1}')
   LAMBDA_SCRIPT_NAME=$(echo ${LAMBDA_SCRIPT} | awk -F\. '{print $1}')
   SHELL_SCRIPT=$(echo "${LAMBDA_SCRIPT_LINE}" | awk -F\~ '{print $2}')
@@ -171,7 +172,7 @@ do
   export AWS_AMI_ID
   export AWS_INSTANCE_TYPE
   export SUBNET_ID
-  export REGION
+  export AWS_REGION
   export SECURITY_GROUP_ID
   inf "${MAGENTA}Checking if Lambda function (${YELLOW}${AWS_LAMBDA_NAME}${MAGENTA}) exists"
   lambda_function_deployment ${AWS_LAMBDA_NAME} ${AWS_HANDLER_FUNCTION_NAME}
@@ -212,7 +213,7 @@ do
     fi
     #only about naming convention end
     #actual checking, creating rules, and adding target to rules, and if needed, cleaning if attached to more then one rule
-    if grep -q ${AWS_LAMBDA_NAME} "${TMP}/${AWS_EVENTS_RULES}_"*_targets_full.json
+    if grep -q ${AWS_LAMBDA_NAME} "${TMP}/${AWS_EVENTS_RULES}_"*_targets_full.json 2>/dev/null
     then
       SID_FROM_EVENT=""
       lambda_get_policy ${AWS_LAMBDA_NAME}
@@ -273,7 +274,9 @@ do
     is_instance_up ${INSTANCE_ID_LAMBDA}
     ##AWS Lambda invoking
   fi
+#  ) &
 done
+wait
 IFS=${ORIGIFS}
 
 END_DEPLOY_LAMBDA_TIME=$(date +%s.%4N)

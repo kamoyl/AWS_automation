@@ -41,8 +41,8 @@ else
   CPU_COUNT="4"
 fi
 
-PATH_PARENT_SCRIPTS=$(dirname ${SCRIPTS_HOME})
-PATH_GRANDPARENT_SCRIPTS=$(dirname ${PATH_PARENT_SCRIPTS})
+export PATH_PARENT_SCRIPTS=$(dirname ${SCRIPTS_HOME})
+export PATH_GRANDPARENT_SCRIPTS=$(dirname ${PATH_PARENT_SCRIPTS})
 SCRIPT_NAME=$(echo ${SCRIPT} | awk -F\/ '{print $NF}')
 
 git_branch () { git branch --no-color 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/\1/'; }
@@ -135,39 +135,6 @@ function failed {
 }
 
 SLEEP_DURATION=${SLEEP_DURATION:=1}  # default to 1 second, use to speed up tests
-
-log_tmp_maintenance()
-{
-  if [ $# -eq 1 ]
-  then
-    S3_BUCKET_NAME=${1}
-  fi
-  BACKUP_OUTPUT_FILE="${SCRIPT_NAME}_${CURRENT_TIMESTAMP}.tar.xz"
-  inf "Archiving all logs and tmp files into: ${BROWN}${VAR}/${BACKUP_OUTPUT_FILE}"
-  tar -cJf "${VAR}/${BACKUP_OUTPUT_FILE}" -C "${VAR}" ${TMP} ${LOG} > /dev/null 2>&1
-  ERROR_CODE="$?"
-  if [ ${ERROR_CODE} -eq 0 ]
-  then
-    rm -rf "${TMP}"
-    rm -rf "${LOG}"
-    inf "  All tmp and log files has just been archived in: ${YELLOW}${VAR}"
-    if [[ ${AWS_ZONE} == "Y" ]]
-    then
-      if [ -z ${S3_BUCKET_NAME} ]
-      then
-        S3_BUCKET_NAME="${AWS_COMMON_NAME}-reports"
-        warn "    ${BROWN}${BACKUP_OUTPUT_FILE}${WINE} - AWS S3 bucket is not provided, so default one is choosen: ${YELLOW}${S3_BUCKET_NAME}"
-        inf "    Copying ${BROWN}${BACKUP_OUTPUT_FILE}${CYAN} to AWS S3 bucket: ${YELLOW}${S3_BUCKET_NAME}"
-        aws ${AWS_PROFILE_USE_CHECK[*]} s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > /dev/null 2>&1
-      else
-        inf "    Copying ${BROWN}${BACKUP_OUTPUT_FILE}${CYAN} to AWS S3 bucket: ${YELLOW}${S3_BUCKET_NAME}"
-        aws ${AWS_PROFILE_USE_CHECK[*]} s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > /dev/null 2>&1
-      fi
-    fi
-  else
-    inf "  I couldn't archive tmp and log files"
-  fi
-}
 
 progress-bar() 
 {

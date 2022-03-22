@@ -599,6 +599,7 @@ then
     AWS_AMI_CSECONDS=$(date -d"${AWS_AMI_CDATE}T${AWS_AMIS_CTIME}" +%s)
     AWS_AMI_SECONDS=$(echo "${NOW_SECONDS} - ${AWS_AMI_CSECONDS}" | bc)
     AWS_AMI_DAYS=$(echo "${AWS_AMI_SECONDS} / 3600 / 24" | bc)
+    AWS_USER_ID_LAUNCH=$(jq -r '.LaunchPermissions[].UserId' "${TMP}/${AWS_AMIS_DETAILS}_${AWS_AMI_IMAGE_ID}_launchPermission.json")
     inf "  AMI id: ${YELLOW}${AWS_AMI_IMAGE_ID}"
     inf "    AMI name: ${BROWN}${AWS_AMI_NAME}${CYAN}, created: ${WINE}${AWS_AMI_CDATE} at ${AWS_AMIS_CTIME} ${CYAN}(${DARK_GREEN}${AWS_AMI_DESCRIPTION}${CYAN})"
     if [ ${AWS_AMI_SECONDS} -ge ${MONTH_SECONDS} ]
@@ -620,43 +621,7 @@ then
         inf "            Key: ${LIGHT_BLUE}${AWS_AMI_SNAPSHOT_KEYID}${CYAN} is appropriate ${WINE}customer${CYAN} managed key"
       else
         inf "            Key: ${LIGHT_BLUE}${AWS_AMI_SNAPSHOT_KEYID}${CYAN} is ${RED}NOT${CYAN} ${WINE}customer${CYAN} managed key, must be reencrypted with ${LIGHT_BLUE}${AWS_KMS_CUSTOM_KEY_ID}"
-        aws_AMI_copy()
-        {
-          if [ $# -ne 2 ]
-          then
-            error "Function ${LIME}${FUNCNAME[0]}${RED} needs three parameters: ${YELLOW}(1)source-ami-id, (2)aws-kms-key-id"
-            failed
-          else
-            SOURCE_AMI_ID=${1}
-            KMS_KEY_ID=${2}
-          fi
-          #if name starts with "copied" and description has ami ID of ami which is just checked - not copying 
-          #if [[ ${AWS_AMI_DESCRIPTION} =~ ^copied_from_${SOURCE_AMI_ID} ]]
-          inf "  Copying source AMI id: ${YELLOW}${SOURCE_AMI_ID}${CYAN} to a new AMI, changing encryption to customer KEYID: ${LIGHT_BLUE}${KMS_KEY_ID}"
-          aws ${AWS_PROFILE_USE_CHECK[*]} ec2 copy-image --encrypted --kms-key-id ${KMS_KEY_ID} --source-region ${AWS_REGION} --source-image-id ${SOURCE_AMI_ID} --description "copied_from_${SOURCE_AMI_ID}_${AWS_AMI_DESCRIPTION}" --name "copied_${AWS_AMI_NAME}" > "${TMP}/${AWS_AMIS_DETAILS}_${SOURCE_AMI_ID}_copy_full.json" 2>"${LOG}/${AWS_AMIS_DETAILS}_${SOURCE_AMI_ID}_copy.log"
-          DESTINATION_AMI_ID=$(jq -r '.ImageId' "${TMP}/${AWS_AMIS_DETAILS}_${AWS_AMI_IMAGE_ID}_copy_full.json")
-          inf "    New AMI id: ${YELLOW}${DESTINATION_AMI_ID}"
-          while [[ $(aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-images --image-ids  ${DESTINATION_AMI_ID} | jq -r '.Images[].State') == "pending" ]]
-          do
-            for NUMBER in {1..100}
-            do
-              sleep 3
-              ProgressBar ${NUMBER} 100
-            done
-            printf '\n'
-          done
-          inf "    Image: ${BROWN}${DESTINATION_AMI_ID}${WINE} is ${GREEN}available${CYAN}..."
-          if [[ ${AWS_OWNER_ID} == "623623120519" ]]
-          then
-            aws ${AWS_PROFILE_USE_CHECK[*]} ec2 modify-image-attribute --image-id ${DESTINATION_AMI_ID} --launch-permission "Add=[{UserId=365117780834}]"
-            #error handling
-          elif [[ ${AWS_OWNER_ID} == "365117780834" ]]
-          then
-            aws ${AWS_PROFILE_USE_CHECK[*]} ec2 modify-image-attribute --image-id ${DESTINATION_AMI_ID} --launch-permission "Add=[{UserId=623623120519}]"
-            #error handling
-          fi
-        }
-        #aws_AMI_copy ${AWS_AMI_IMAGE_ID} ${AWS_KMS_CUSTOM_KEY_ID}
+        aws_AMI_copy ${AWS_AMI_IMAGE_ID} ${AWS_KMS_CUSTOM_KEY_ID}
       fi
     fi
     echo "

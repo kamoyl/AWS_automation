@@ -49,7 +49,14 @@ aws_KMS_customer_key_create
 DEFAULT_VPC=$(jq -r '.Vpcs[].VpcId' "${TMP}/${AWS_VPCS}_full.json")
 
 #start separating data
-
+#launchPermissions
+for AWS_AMI_IMAGE_ID in $(jq -r '.Images[].ImageId' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+do
+  (
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-image-attribute --attribute launchPermission --image-id ${AWS_AMI_IMAGE_ID} > "${TMP}/${AWS_AMIS_DETAILS}_${AWS_AMI_IMAGE_ID}_launchPermission.json" 2>"${LOG}/${AWS_AMIS_DETAILS}_${AWS_AMI_IMAGE_ID}_launchPermission.log"
+  ) &
+done
+#
 #separation of policies
 jq -r --arg owner_id ${AWS_OWNER_ID} --arg aws_default_name ${AWS_DEFAULT_NAME} '.Policies[] | select(.Arn | contains($owner_id)) | select(.PolicyName | startswith($aws_default_name) | not)' "${TMP}/${AWS_POLICIES}_full.json" > "${TMP}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}_full.json"  2>"${LOG}/${AWS_POLICIES}_${AWS_NAMES_PREFIX}.log"
 

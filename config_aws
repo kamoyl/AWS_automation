@@ -11,7 +11,7 @@ then
   export AWS_DEFAULT_NAME="default"
   export AWS_COMMON_NAME="kamil"
   export AWS_LOGIN_URL="https://aws.amazon.com/"
-  export SLACK_CHANNEL_AWS="D1KGVBCUF"
+  export SLACK_CHANNEL_AWS="C033174Q68M"
 fi
 #AWS_NETWORK_TAG="" - if empty - all networks will be picked up
 #SOURCE_NETWORKS=""
@@ -119,14 +119,32 @@ log_tmp_maintenance()
     S3_BUCKET_NAME=${1}
   fi
   BACKUP_OUTPUT_FILE="${SCRIPT_NAME}_${CURRENT_TIMESTAMP}.tar.xz"
-  inf "Archiving all logs and tmp files into: ${BROWN}${VAR}/${BACKUP_OUTPUT_FILE}"
-  tar -cJf "${VAR}/${BACKUP_OUTPUT_FILE}" -C "${VAR}" ${TMP} ${LOG} > "${VAR}/maintenance_log_tmp.log" 2>&1
-  ERROR_CODE="$?"
-  if [ ${ERROR_CODE} -eq 0 ]
+  if [[ ${VERBOSE} == no ]]
   then
-    rm -rf "${TMP}"
-    rm -rf "${LOG}"
-    inf "  All tmp and log files has just been archived in: ${YELLOW}${VAR}"
+    inf "Archiving all logs and tmp files into: ${BROWN}${VAR}/${BACKUP_OUTPUT_FILE}"
+    tar -cJf "${VAR}/${BACKUP_OUTPUT_FILE}" -C "${VAR}" ${TMP} ${LOG} > "${VAR}/maintenance_log_tmp.log" 2>&1
+    ERROR_CODE="$?"
+    if [ ${ERROR_CODE} -eq 0 ]
+    then
+      rm -rf "${TMP}"
+      rm -rf "${LOG}"
+      inf "  All tmp and log files has just been archived in: ${YELLOW}${VAR}"
+      if [[ ${AWS_ZONE} == "Y" ]]
+      then
+        if [ -z ${S3_BUCKET_NAME} ]
+        then
+          S3_BUCKET_NAME="${AWS_COMMON_NAME}-reports"
+          warn "    ${BROWN}${BACKUP_OUTPUT_FILE}${WINE} - AWS S3 bucket is not provided, so default one is choosen: ${YELLOW}${S3_BUCKET_NAME}"
+          inf "    Copying ${BROWN}${BACKUP_OUTPUT_FILE}${CYAN} to AWS S3 bucket: ${YELLOW}${S3_BUCKET_NAME}"
+          aws ${AWS_PROFILE_USE_CHECK[*]} s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > "${VAR}/S3_copying_log_tmp.log" 2>&1
+        else
+          inf "    Copying ${BROWN}${BACKUP_OUTPUT_FILE}${CYAN} to AWS S3 bucket: ${YELLOW}${S3_BUCKET_NAME}"
+          aws ${AWS_PROFILE_USE_CHECK[*]} s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > "${VAR}/S3_copying_log_tmp.log" 2>&1
+        fi
+      fi
+    else
+      inf "  I couldn't archive tmp and log files"
+    fi
     if [[ ${AWS_ZONE} == "Y" ]]
     then
       if [ -z ${S3_BUCKET_NAME} ]
@@ -140,8 +158,6 @@ log_tmp_maintenance()
         aws ${AWS_PROFILE_USE_CHECK[*]} s3 cp "${VAR}/${BACKUP_OUTPUT_FILE}" s3://${S3_BUCKET_NAME}/ --storage-class STANDARD_IA > "${VAR}/S3_copying_log_tmp.log" 2>&1
       fi
     fi
-  else
-    inf "  I couldn't archive tmp and log files"
   fi
 }
 
@@ -157,8 +173,13 @@ link_presign_s3_file()
     NAME_OF_FILE_STORED=${2}
     EXPIRE_TIME="${3}"
   fi
-  #"${SCRIPT_NAME}_${CURRENT_TIMESTAMP}.tar.xz"
-  export PRESIGNED_LINK=$(aws ${AWS_PROFILE_USE_CHECK[*]} s3 presign "s3://${S3_BUCKET_NAME}/${NAME_OF_FILE_STORED}" --expires-in ${EXPIRE_TIME})
+  if ! type aws > /dev/null 2>&1
+  then
+    warn "There is no AWS CLI, so presign link will not be created"
+  else
+    export PRESIGNED_LINK=$(aws ${AWS_PROFILE_USE_CHECK[*]} s3 presign "s3://${S3_BUCKET_NAME}/${NAME_OF_FILE_STORED}" --expires-in ${EXPIRE_TIME})
+    debug "▷▷▷▷▷▷ PRESIGNED_LINK: ${PRESIGNED_LINK}"
+  fi
 }
 
 slack_vm_start()
@@ -373,6 +394,54 @@ aws_newest_ami()
     error "  There is no AMI(s), exitting"
     failed
   fi
+}
+
+aws_AMI_copy()
+{
+  IFS=${NEWIFS}
+  if [ $# -ne 2 ]
+  then
+    error "Function ${LIME}${FUNCNAME[0]}${RED} needs three parameters: ${YELLOW}(1)source-ami-id, (2)aws-kms-key-id"
+    failed
+  else
+    SOURCE_AMI_ID=${1}
+    KMS_KEY_ID=${2}
+  fi
+  AMI_DESCRIPTION=$(jq -r --arg image_id ${SOURCE_AMI_ID} '.Images[] | select(.ImageId == $image_id) | .Description' "${TMP}/${AWS_AMIS_DETAILS}_full.json")
+  if grep -q ${AMI_DESCRIPTION} <(jq -r '.Images[] | .ImageId + " " + .Description' "${TMP}/${AWS_AMIS_DETAILS}_full.json" | grep "copied_from_")
+  then
+    for ORIGINAL_AMI_FROM in $(grep ${AMI_DESCRIPTION} <(jq -r '.Images[] | .ImageId + " " + .Description' "${TMP}/${AWS_AMIS_DETAILS}_full.json") | grep "copied_from_" | awk '{print $1}')
+    do
+      debug "             This: ${YELLOW}${ORIGINAL_AMI_FROM}${BLUE} is copied from ${YELLOW}${SOURCE_AMI_ID}${BLUE} (${DARK_GREEN}${AMI_DESCRIPTION}${BLUE}) already"
+    done
+  else
+    inf "  Copying source AMI id: ${YELLOW}${SOURCE_AMI_ID}${CYAN} to a new AMI, changing encryption to customer KEYID: ${LIGHT_BLUE}${KMS_KEY_ID}"
+    aws ${AWS_PROFILE_USE_CHECK[*]} ec2 copy-image --encrypted --kms-key-id ${KMS_KEY_ID} --source-region ${AWS_REGION} --source-image-id ${SOURCE_AMI_ID} --description "copied_from_${SOURCE_AMI_ID}_${AMI_DESCRIPTION}" --name "copied_${AWS_AMI_NAME}" > "${TMP}/${AWS_AMIS_DETAILS}_${SOURCE_AMI_ID}_copy_full.json" 2>"${LOG}/${AWS_AMIS_DETAILS}_${SOURCE_AMI_ID}_copy.log"
+    DESTINATION_AMI_ID=$(jq -r '.ImageId' "${TMP}/${AWS_AMIS_DETAILS}_${AWS_AMI_IMAGE_ID}_copy_full.json")
+    inf "    New AMI id: ${YELLOW}${DESTINATION_AMI_ID}"
+    while [[ $(aws ${AWS_PROFILE_USE_CHECK[*]} ec2 describe-images --image-ids  ${DESTINATION_AMI_ID} | jq -r '.Images[].State') == "pending" ]]
+    do
+      for NUMBER in {1..100}
+      do
+        sleep 3
+        ProgressBar ${NUMBER} 100
+      done
+      printf '\n'
+    done
+    inf "    Image: ${BROWN}${DESTINATION_AMI_ID}${WINE} is ${GREEN}available${CYAN}..."
+    #ToDo: separated function which would check image attributes:
+    if [[ ${AWS_OWNER_ID} == "${DEFAULT_AWS_OWNER_ID}" ]]
+    then
+      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 modify-image-attribute --image-id ${DESTINATION_AMI_ID} --launch-permission "Add=[{UserId=${EXTRA_AWS_OWNER_ID}}]"
+      #error handling
+    elif [[ ${AWS_OWNER_ID} == "${EXTRA_AWS_OWNER_ID}" ]]
+    then
+      aws ${AWS_PROFILE_USE_CHECK[*]} ec2 modify-image-attribute --image-id ${DESTINATION_AMI_ID} --launch-permission "Add=[{UserId=${DEFAULT_AWS_OWNER_ID}}]"
+      #error handling
+    fi
+    #ToDo: separated function which would check image attributes:
+  fi
+  IFS=${ORIGIFS}
 }
 
 aws_list-roles()
